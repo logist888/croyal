@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+npm-debug.log*
+
+# Local backups are machine-local rotating snapshots (see docs/BACKUP.md)
+backups/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

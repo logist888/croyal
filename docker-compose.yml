@@ -1,0 +1,25 @@
+# Production-path services (PostgreSQL + Redis). The MVP runs without these using
+# the in-memory store; see docs/DATABASE.md for wiring a PgStore/RedisStore.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: towerclash
+      POSTGRES_PASSWORD: towerclash
+      POSTGRES_DB: towerclash
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:

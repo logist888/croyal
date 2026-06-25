@@ -1,0 +1,274 @@
+/**
+ * Clan boss raid (co-op). Members of one clan fight a shared boss together.
+ * Co-op (2+ simultaneous players) DOUBLES the boss difficulty (HP and damage).
+ * Per-player damage is attributed for the reward screen.
+ */
+import {
+  TICK_DT, TICK_RATE, SNAPSHOT_RATE, ARENA_WIDTH, ARENA_HEIGHT,
+  ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
+  BOSS_RAID_SECONDS, BOSS_BASE_HP, BOSS_BASE_DAMAGE, BOSS_COOP_MULTIPLIER, BOSS_MAX_PLAYERS,
+  getCard, type ServerMessage, type BossSnapshot, type EntitySnapshot, type BossResult,
+} from '@croyal/shared';
+
+type Sender = (msg: ServerMessage) => void;
+
+interface Participant {
+  userId: string;
+  nickname: string;
+  elixir: number;
+  queue: string[];
+  damageDealt: number;
+  send: Sender;
+}
+
+interface BossUnit {
+  id: string;
+  ownerId: string;
+  cardId: string;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  damage: number;
+  hitSpeed: number;
+  range: number;
+  moveSpeed: number;
+  color: number;
+  attackCd: number;
+}
+
+const BOSS_POS = { x: ARENA_WIDTH / 2, y: 4 };
+const BOSS_RANGE = 3.5;
+const BOSS_HIT_SPEED = 1.2;
+
+export class BossRoom {
+  private participants = new Map<string, Participant>();
+  private units: BossUnit[] = [];
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private tickCount = 0;
+  private seq = 0;
+  private ended = false;
+
+  private bossHp = BOSS_BASE_HP;
+  private bossMaxHp = BOSS_BASE_HP;
+  private bossDamage = BOSS_BASE_DAMAGE;
+  private bossAttackCd = 0;
+  private multiplier = 1;
+  private timeLeft = BOSS_RAID_SECONDS;
+
+  constructor(
+    public readonly clanId: string,
+    private onEmpty: (room: BossRoom) => void,
+  ) {}
+
+  get size(): number {
+    return this.participants.size;
+  }
+
+  /** Exposed for tests/telemetry. */
+  get difficultyMultiplier(): number {
+    return this.multiplier;
+  }
+  get bossMaxHpValue(): number {
+    return this.bossMaxHp;
+  }
+
+  join(userId: string, nickname: string, deck: string[], send: Sender): { ok: boolean; error?: string } {
+    if (this.ended) return { ok: false, error: 'raid ended' };
+    if (this.participants.has(userId)) return { ok: false, error: 'already in raid' };
+    if (this.participants.size >= BOSS_MAX_PLAYERS) return { ok: false, error: 'raid full' };
+    this.participants.set(userId, {
+      userId, nickname, elixir: ELIXIR_START, queue: [...deck], damageDealt: 0, send,
+    });
+    this.recomputeDifficulty();
+    if (!this.timer) this.start();
+    return { ok: true };
+  }
+
+  leave(userId: string): void {
+    this.participants.delete(userId);
+    if (this.participants.size === 0) this.stop();
+  }
+
+  /** Co-op (2+) doubles boss HP and damage; difficulty is recomputed live. */
+  private recomputeDifficulty(): void {
+    const mult = this.participants.size >= 2 ? BOSS_COOP_MULTIPLIER : 1;
+    if (mult === this.multiplier) return;
+    const frac = this.bossMaxHp > 0 ? this.bossHp / this.bossMaxHp : 1;
+    this.multiplier = mult;
+    this.bossMaxHp = BOSS_BASE_HP * mult;
+    this.bossHp = this.bossMaxHp * frac;
+    this.bossDamage = BOSS_BASE_DAMAGE * mult;
+  }
+
+  private start(): void {
+    this.timer = setInterval(() => this.loop(), Math.round(TICK_DT * 1000));
+  }
+
+  private stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.onEmpty(this);
+  }
+
+  deploy(userId: string, cardId: string, x: number, y: number): void {
+    if (this.ended) return;
+    const p = this.participants.get(userId);
+    if (!p) return;
+    const card = getCard(cardId);
+    if (!card) return;
+    if (!p.queue.slice(0, 4).includes(cardId)) return;
+    if (p.elixir < card.cost) return;
+    p.elixir -= card.cost;
+    // cycle
+    const idx = p.queue.indexOf(cardId);
+    if (idx >= 0) {
+      p.queue.splice(idx, 1);
+      p.queue.push(cardId);
+    }
+
+    if (card.type === 'spell') {
+      if (dist(x, y, BOSS_POS.x, BOSS_POS.y) <= (card.spellRadius ?? 1)) {
+        this.damageBoss(card.spellDamage ?? 0, p);
+      }
+      return;
+    }
+    const count = card.count ?? 1;
+    for (let i = 0; i < count; i++) {
+      this.units.push({
+        id: `u-${this.seq++}`,
+        ownerId: userId,
+        cardId: card.id,
+        x: clamp(x + (i - count / 2) * 0.5, 0.5, ARENA_WIDTH - 0.5),
+        y: clamp(y, ARENA_HEIGHT * 0.4, ARENA_HEIGHT - 0.5),
+        hp: card.hp ?? 100,
+        maxHp: card.hp ?? 100,
+        damage: card.damage ?? 0,
+        hitSpeed: card.hitSpeed ?? 1,
+        range: card.range ?? 1.2,
+        moveSpeed: card.moveSpeed ?? 1,
+        color: card.color,
+        attackCd: 0,
+      });
+    }
+  }
+
+  private damageBoss(amount: number, p: Participant): void {
+    const dealt = Math.min(amount, this.bossHp);
+    this.bossHp -= amount;
+    p.damageDealt += dealt;
+    if (this.bossHp <= 0) this.finish('win');
+  }
+
+  private loop(): void {
+    if (this.ended) return;
+    this.tickCount++;
+    this.timeLeft = Math.max(0, this.timeLeft - TICK_DT);
+
+    // elixir regen
+    for (const p of this.participants.values()) {
+      p.elixir = Math.min(ELIXIR_MAX, p.elixir + TICK_DT / ELIXIR_REGEN_SECONDS);
+    }
+
+    // units move toward boss and attack it
+    const owners = new Map<string, Participant>();
+    for (const p of this.participants.values()) owners.set(p.userId, p);
+    for (const u of this.units) {
+      if (u.hp <= 0) continue;
+      const d = dist(u.x, u.y, BOSS_POS.x, BOSS_POS.y);
+      if (d <= u.range + 0.6) {
+        u.attackCd -= TICK_DT;
+        if (u.attackCd <= 0 && u.damage > 0) {
+          const owner = owners.get(u.ownerId);
+          if (owner) this.damageBoss(u.damage, owner);
+          u.attackCd = u.hitSpeed;
+        }
+      } else if (u.moveSpeed > 0) {
+        const step = u.moveSpeed * TICK_DT;
+        u.x += ((BOSS_POS.x - u.x) / d) * step;
+        u.y += ((BOSS_POS.y - u.y) / d) * step;
+      }
+    }
+
+    // boss AoE attack
+    this.bossAttackCd -= TICK_DT;
+    if (this.bossAttackCd <= 0) {
+      for (const u of this.units) {
+        if (u.hp > 0 && dist(u.x, u.y, BOSS_POS.x, BOSS_POS.y) <= BOSS_RANGE) {
+          u.hp -= this.bossDamage;
+        }
+      }
+      this.bossAttackCd = BOSS_HIT_SPEED;
+    }
+    this.units = this.units.filter((u) => u.hp > 0);
+
+    if (this.tickCount % Math.round(TICK_RATE / SNAPSHOT_RATE) === 0) this.broadcast();
+
+    if (this.bossHp <= 0 && !this.ended) this.finish('win');
+    else if (this.timeLeft <= 0 && !this.ended) this.finish('loss');
+  }
+
+  private snapshotFor(p: Participant): BossSnapshot {
+    const entities: EntitySnapshot[] = [
+      {
+        id: 'boss', side: 'B', kind: 'tower', x: BOSS_POS.x, y: BOSS_POS.y,
+        hp: Math.max(0, Math.round(this.bossHp)), maxHp: this.bossMaxHp, color: 0x7e57c2,
+      },
+    ];
+    for (const u of this.units) {
+      entities.push({
+        id: u.id, side: 'A', kind: 'unit', cardId: u.cardId,
+        x: round2(u.x), y: round2(u.y), hp: Math.max(0, Math.round(u.hp)), maxHp: u.maxHp, color: u.color,
+      });
+    }
+    return {
+      tick: this.tickCount,
+      timeLeft: Math.ceil(this.timeLeft),
+      bossHp: Math.max(0, Math.round(this.bossHp)),
+      bossMaxHp: this.bossMaxHp,
+      difficultyMultiplier: this.multiplier,
+      entities,
+      participants: [...this.participants.values()].map((x) => ({
+        userId: x.userId, nickname: x.nickname, damageDealt: Math.round(x.damageDealt),
+      })),
+      yourElixir: round2(p.elixir),
+      hand: p.queue.slice(0, 4),
+      nextCard: p.queue[4],
+    };
+  }
+
+  private broadcast(): void {
+    for (const p of this.participants.values()) {
+      p.send({ t: 'boss', snapshot: this.snapshotFor(p) });
+    }
+  }
+
+  private finish(outcome: 'win' | 'loss'): void {
+    if (this.ended) return;
+    this.ended = true;
+    if (this.timer) clearInterval(this.timer);
+    const result: BossResult = {
+      outcome,
+      bossMaxHp: this.bossMaxHp,
+      participants: [...this.participants.values()].map((x) => ({
+        userId: x.userId, nickname: x.nickname, damageDealt: Math.round(x.damageDealt),
+      })),
+      rewardGold: outcome === 'win' ? 200 * this.multiplier : 25,
+    };
+    for (const p of this.participants.values()) p.send({ t: 'bossEnd', result });
+    this.participants.clear();
+    this.onEmpty(this);
+  }
+}
+
+function dist(ax: number, ay: number, bx: number, by: number): number {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return Math.sqrt(dx * dx + dy * dy) || 0.0001;
+}
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
+}
