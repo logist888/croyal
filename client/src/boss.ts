@@ -6,7 +6,7 @@ import type { BossSnapshot, BossResult, ServerMessage } from '@croyal/shared';
 import { socket } from './net';
 import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
 import { GameField } from './field';
-import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, type HandUI } from './hud';
+import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, nextCardHtml, setNextCard, type HandUI } from './hud';
 import { haptic } from './telegram';
 import { t } from './i18n';
 
@@ -26,14 +26,16 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   root.className = 'hud';
   root.innerHTML = `
     <div class="hud-top">
-      <button id="leave" class="danger" style="padding:6px 10px">${t('common.leave')}</button>
+      <button id="leave" class="danger" style="padding:6px 12px">${t('common.leave')}</button>
       <span id="diff" class="badge">${t('boss.solo')}</span>
-      <span id="timer">3:00</span>
+      <span id="timer" class="chip timer">3:00</span>
     </div>
-    <div class="elixir-bar"><div class="elixir-fill" id="boss-hp" style="background:linear-gradient(90deg,#7e57c2,#b388ff)"></div></div>
-    <div class="muted" id="bosshp-label" style="padding:0 12px">Boss</div>
+    <div style="padding:0 12px">
+      <div class="elixir-bar" style="height:16px"><div class="elixir-fill" id="boss-hp" style="background:linear-gradient(180deg,#b388ff,#7e57c2)"></div></div>
+      <div class="muted" id="bosshp-label" style="margin-top:2px">Boss</div>
+    </div>
     ${elixirBarHtml()}
-    <div class="hand" id="hand"></div>
+    <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>
     <div class="card"><div class="muted">${t('boss.raiders')}</div><div id="parts"></div></div>`;
   setUI(root);
   setGameVisible(true);
@@ -59,6 +61,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     field?.render(snap.entities);
     setElixir(root, snap.yourElixir);
     hand?.setHand(snap.hand, snap.nextCard, snap.yourElixir);
+    setNextCard(root, snap.nextCard);
 
     const bossHp = root.querySelector<HTMLDivElement>('#boss-hp')!;
     bossHp.style.width = `${Math.max(0, (snap.bossHp / snap.bossMaxHp) * 100)}%`;

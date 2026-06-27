@@ -43,6 +43,15 @@ export function hex(color: number): string {
   return '#' + color.toString(16).padStart(6, '0');
 }
 
+/**
+ * Logo markup. Uses /logo.png if the operator dropped one into client/public,
+ * otherwise falls back to the bundled placeholder crest /logo.svg.
+ */
+export function logoHtml(small = false): string {
+  return `<img class="logo${small ? ' logo-sm' : ''}" src="/logo.png" alt="Tower Clash"
+    onerror="this.onerror=null;this.src='/logo.svg'">`;
+}
+
 // --- Registration (nickname is permanent!) ---
 export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?: string }): void {
   setGameVisible(false);
@@ -50,7 +59,7 @@ export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?
 
   const node = div('screen');
   node.innerHTML = `
-    <h1>Tower Clash</h1>
+    ${logoHtml()}
     <div class="card col">
       <h2>${t('register.title')}</h2>
       <label class="muted">${t('register.nickLabel')}</label>
@@ -133,6 +142,7 @@ export function renderMenu(nav: Nav): void {
   const p = state.profile!;
   const node = div('screen');
   node.innerHTML = `
+    ${logoHtml(true)}
     <div class="row space-between">
       <h1>${t('menu.greeting', { name: escapeHtml(p.nickname) })}</h1>
     </div>

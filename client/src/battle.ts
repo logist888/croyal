@@ -5,7 +5,7 @@ import type { BattleSnapshot, MatchResult, ServerMessage } from '@croyal/shared'
 import { socket } from './net';
 import { setUI, setGameVisible, type Nav } from './ui';
 import { GameField } from './field';
-import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, type HandUI } from './hud';
+import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, nextCardHtml, setNextCard, type HandUI } from './hud';
 import { haptic } from './telegram';
 import { t, reasonText } from './i18n';
 
@@ -42,12 +42,12 @@ export async function startBattle(nav: Nav): Promise<void> {
     root.className = 'hud';
     root.innerHTML = `
       <div class="hud-top">
-        <button id="leave" class="danger" style="padding:6px 10px">${t('common.leave')}</button>
-        <span id="score">0 — 0</span>
-        <span id="timer">4:00</span>
+        <button id="leave" class="danger" style="padding:6px 12px">${t('common.leave')}</button>
+        <span id="score" class="chip score">0 — 0</span>
+        <span id="timer" class="chip timer">4:00</span>
       </div>
       ${elixirBarHtml()}
-      <div class="hand" id="hand"></div>`;
+      <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`;
     setUI(root);
     setGameVisible(true);
     root.querySelector<HTMLButtonElement>('#leave')!.onclick = () => {
@@ -64,6 +64,7 @@ export async function startBattle(nav: Nav): Promise<void> {
     const myElixir = snap.elixir[yourSide];
     setElixir(root, myElixir);
     hand?.setHand(snap.hand, snap.nextCard, myElixir);
+    setNextCard(root, snap.nextCard);
     const timer = root.querySelector<HTMLSpanElement>('#timer');
     if (timer) timer.textContent = fmtTime(snap.timeLeft) + (snap.doubleElixir ? ' ×2' : '');
     const score = root.querySelector<HTMLSpanElement>('#score');

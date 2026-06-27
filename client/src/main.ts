@@ -4,7 +4,7 @@
 import { api } from './net';
 import { state } from './state';
 import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
-import { renderRegister, renderMenu, renderClans, setUI, type Nav } from './ui';
+import { renderRegister, renderMenu, renderClans, setUI, logoHtml, type Nav } from './ui';
 import { startBattle } from './battle';
 import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
@@ -20,7 +20,7 @@ const nav: Nav = {
 function loading(text: string) {
   const node = document.createElement('div');
   node.className = 'screen';
-  node.innerHTML = `<h1>Tower Clash</h1><div class="card"><div class="muted">${text}</div></div>`;
+  node.innerHTML = `${logoHtml()}<div class="card"><div class="muted">${text}</div></div>`;
   setUI(node);
 }
 

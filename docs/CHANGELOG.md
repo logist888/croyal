@@ -3,6 +3,20 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-3 — UI theme overhaul + logo support
+- Reskinned the whole interface to a polished, original "arena game" look
+  (wood + gold panels, chunky 3D gold/blue/red buttons, green arena palette).
+  All styling is hand-authored CSS — no third-party game assets.
+- Upgraded the Phaser arena renderer: checkered grass, styled river with two
+  plank bridges, tower platforms with a crown on the king tower, unit shadows
+  and outlines, and a spiky boss.
+- New battle/boss HUD: timer/score chips, a 10-segment elixir bar with a live
+  counter, and a "next card" preview.
+- Logo support: the app loads `client/public/logo.png` if present, otherwise a
+  bundled original placeholder crest (`logo.svg`); also wired as the favicon.
+  Drop your own image at `client/public/logo.png` (see `client/public/README.md`).
+- Verified: client typecheck + production build green (logo asset emitted).
+
 ## build-2 — Russian localization
 - Added a client i18n layer (`client/src/i18n.ts`) with full **English + Russian**
   string sets. The whole UI (registration, menu, clans, battle, boss, result
