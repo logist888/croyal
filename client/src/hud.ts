@@ -30,13 +30,11 @@ export function buildHand(container: HTMLElement, onSelect: () => void): HandUI 
       const c = getCard(id)!;
       const cell = document.createElement('div');
       const affordable = elixir >= c.cost;
-      cell.className = 'handcard' + (selectedId === id ? ' selected' : '') + (affordable ? '' : ' unaffordable');
       const art = cardImageUrl(id);
+      cell.className = 'handcard' + (art ? ' has-art' : '') + (selectedId === id ? ' selected' : '') + (affordable ? '' : ' unaffordable');
       if (art) {
         cell.style.backgroundImage = `url(${art})`;
-        cell.style.backgroundSize = 'cover';
-        cell.style.backgroundPosition = 'center';
-        cell.innerHTML = `<div class="cost">${c.cost}</div>`;
+        cell.innerHTML = '';
       } else {
         cell.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
         cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
@@ -90,7 +88,8 @@ export function setNextCard(root: HTMLElement, id: string): void {
   const art = cardImageUrl(id);
   if (art) {
     el.style.backgroundImage = `url(${art})`;
-    el.style.backgroundSize = 'cover';
+    el.style.backgroundSize = 'contain';
+    el.style.backgroundRepeat = 'no-repeat';
     el.style.backgroundPosition = 'center';
     if (name) name.textContent = '';
   } else {

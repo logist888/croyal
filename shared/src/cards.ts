@@ -43,7 +43,7 @@ export const CARDS: Record<string, CardDef> = {
     hp: 130, damage: 50, hitSpeed: 1.0, range: 5.0, moveSpeed: 1.0, targets: 'both', count: 2,
   },
   colossus: {
-    id: 'colossus', name: 'Colossus', type: 'troop', cost: 5, color: 0xffa726,
+    id: 'colossus', name: 'Colossus', type: 'troop', cost: 6, color: 0xffa726,
     hp: 2200, damage: 130, hitSpeed: 1.5, range: 1.2, moveSpeed: 0.7, targets: 'ground', count: 1,
     targetsBuildingsOnly: true,
   },
@@ -60,17 +60,17 @@ export const CARDS: Record<string, CardDef> = {
     hp: 600, damage: 340, hitSpeed: 1.6, range: 1.2, moveSpeed: 1.3, targets: 'ground', count: 1,
   },
   bombthrower: {
-    id: 'bombthrower', name: 'Bomb Thrower', type: 'troop', cost: 3, color: 0x5c6bc0,
+    id: 'bombthrower', name: 'Bomb Thrower', type: 'troop', cost: 4, color: 0x5c6bc0,
     hp: 240, damage: 130, hitSpeed: 1.3, range: 4.5, moveSpeed: 1.0, targets: 'ground', count: 1,
     splashRadius: 1.5,
   },
   bastion: {
-    id: 'bastion', name: 'Bastion', type: 'building', cost: 3, color: 0x78909c,
+    id: 'bastion', name: 'Bastion', type: 'building', cost: 5, color: 0x78909c,
     hp: 700, damage: 90, hitSpeed: 0.9, range: 5.5, moveSpeed: 0, targets: 'ground', count: 1,
     lifetimeSeconds: 30,
   },
   meteor: {
-    id: 'meteor', name: 'Meteor', type: 'spell', cost: 4, color: 0xff7043,
+    id: 'meteor', name: 'Meteor', type: 'spell', cost: 5, color: 0xff7043,
     spellRadius: 2.5, spellDamage: 360,
   },
   volley: {

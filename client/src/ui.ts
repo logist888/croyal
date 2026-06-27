@@ -168,10 +168,8 @@ export function renderMenu(nav: Nav): void {
     const cell = div('handcard');
     const art = cardImageUrl(id);
     if (art) {
+      cell.className = 'handcard has-art';
       cell.style.backgroundImage = `url(${art})`;
-      cell.style.backgroundSize = 'cover';
-      cell.style.backgroundPosition = 'center';
-      cell.innerHTML = `<div class="cost">${c.cost}</div>`;
     } else {
       cell.style.background = hex(c.color);
       cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;

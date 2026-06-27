@@ -3,6 +3,24 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-5 — Real art wired in (cards, logo, menu)
+- Sliced the uploaded ChatGPT art batch with a tailored slicer
+  (`scripts/preslice-uploads.mjs`):
+  - **10 card portraits** cut from the 5×2 card sheet (grid crop + autocrop +
+    contain) → shown in the hand, deck and next-card preview as full cards.
+  - **Logo** white background keyed out (border flood-fill) → transparent
+    `client/public/logo.png` (loading/register/menu + favicon).
+  - **Menu backdrop** from an arena render → dimmed full-app background.
+- Card cells now render the real card art (frame/name/cost baked in); our overlay
+  is dropped when art is present. Card **costs aligned to the art**: colossus 6,
+  bomb thrower 4, bastion 5, meteor 5.
+- Not used (kept as source): the arena renders have **towers baked in**, so they
+  can't be the battle background (would collide with the game's destructible
+  towers); the unit/tower/boss reference is too low-res to cut. Battle units,
+  towers and boss therefore keep the drawn placeholders for now.
+- Verified: slices inspected; 22 tests pass; typecheck + build green; assets emit
+  into `dist`.
+
 ## build-4 — Art pipeline (drop-in sprites)
 - New `art/incoming/<category>/` folder where raw art is dropped (cards, units,
   towers, boss, arena, ui, logo), with naming/size conventions in its README.

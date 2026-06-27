@@ -10,21 +10,25 @@ export interface AssetManifest {
   boss: Record<string, string>;
   arena: Record<string, string>;
   ui: Record<string, string>;
+  menuBg?: string | null;
 }
 
-let manifest: AssetManifest = { cards: {}, units: {}, towers: {}, boss: {}, arena: {}, ui: {} };
+const empty = (): AssetManifest => ({ cards: {}, units: {}, towers: {}, boss: {}, arena: {}, ui: {}, menuBg: null });
+let manifest: AssetManifest = empty();
 
 export async function loadAssetManifest(): Promise<void> {
   try {
     const res = await fetch('/assets/manifest.json', { cache: 'no-cache' });
     if (res.ok) {
       const data = await res.json();
-      manifest = { cards: {}, units: {}, towers: {}, boss: {}, arena: {}, ui: {}, ...data };
+      manifest = { ...empty(), ...data };
     }
   } catch {
     /* no manifest yet — keep empty, everything falls back to placeholders */
   }
 }
+
+export const menuBgUrl = (): string | undefined => manifest.menuBg ?? undefined;
 
 export const cardImageUrl = (id: string): string | undefined => manifest.cards[id];
 export const unitImageUrl = (id: string): string | undefined => manifest.units[id];

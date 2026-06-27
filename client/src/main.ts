@@ -8,7 +8,7 @@ import { renderRegister, renderMenu, renderClans, setUI, logoHtml, type Nav } fr
 import { startBattle } from './battle';
 import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
-import { loadAssetManifest } from './assets';
+import { loadAssetManifest, menuBgUrl } from './assets';
 
 const nav: Nav = {
   toMenu: () => renderMenu(nav),
@@ -29,6 +29,12 @@ async function boot() {
   initTelegram();
   loading(t('common.connecting'));
   await loadAssetManifest();
+
+  const bg = menuBgUrl();
+  if (bg) {
+    document.body.style.background =
+      `linear-gradient(rgba(8,16,10,0.84), rgba(8,16,10,0.93)), url("${bg}") center top / cover fixed`;
+  }
 
   const initData = getInitData();
   const devUser = initData ? undefined : getDevUser();

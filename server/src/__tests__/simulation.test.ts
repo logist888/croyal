@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Simulation } from '../game/simulation';
-import { DEFAULT_DECK, ROUND_SECONDS } from '@croyal/shared';
+import { DEFAULT_DECK, ROUND_SECONDS, getCard } from '@croyal/shared';
 
 describe('battle simulation', () => {
   it('NEVER ends in a draw — a timed-out match still has a winner', () => {
@@ -23,7 +23,8 @@ describe('battle simulation', () => {
   it('spends elixir when a card is deployed', () => {
     const sim = new Simulation([...DEFAULT_DECK], [...DEFAULT_DECK], 1);
     const before = sim.getSnapshot('A').elixir.A;
-    const card = sim.handOf('A')[0];
+    const card = sim.handOf('A').find((id) => (getCard(id)?.cost ?? 99) <= before)!;
+    expect(card).toBeTruthy();
     const ok = sim.deploy('A', card, 5, 22); // A's own half (bottom)
     expect(ok.ok).toBe(true);
     const after = sim.getSnapshot('A').elixir.A;

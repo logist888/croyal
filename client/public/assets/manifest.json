@@ -1,8 +1,20 @@
 {
-  "cards": {},
+  "cards": {
+    "footman": "/assets/cards/footman.png",
+    "archers": "/assets/cards/archers.png",
+    "colossus": "/assets/cards/colossus.png",
+    "ratpack": "/assets/cards/ratpack.png",
+    "sharpshooter": "/assets/cards/sharpshooter.png",
+    "blademaster": "/assets/cards/blademaster.png",
+    "bombthrower": "/assets/cards/bombthrower.png",
+    "bastion": "/assets/cards/bastion.png",
+    "meteor": "/assets/cards/meteor.png",
+    "volley": "/assets/cards/volley.png"
+  },
   "units": {},
   "towers": {},
   "boss": {},
   "arena": {},
-  "ui": {}
+  "ui": {},
+  "menuBg": "/assets/menu-bg.png"
 }
