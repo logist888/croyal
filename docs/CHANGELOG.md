@@ -3,6 +3,16 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-2 — Russian localization
+- Added a client i18n layer (`client/src/i18n.ts`) with full **English + Russian**
+  string sets. The whole UI (registration, menu, clans, battle, boss, result
+  screens), card names, and result reasons are translated.
+- Language follows `profile.language`: choosing **Русский** at registration shows
+  the entire interface in Russian. The registration screen switches language live
+  when toggling EN/RU, and defaults to the Telegram/device language.
+- Client-side nickname validation now shows localized error messages.
+- Verified: client typecheck + production build green (server unchanged).
+
 ## build-1 — Initial MVP (Phases 0–3)
 First implementation of Tower Clash as a Telegram Mini App.
 

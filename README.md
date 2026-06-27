@@ -23,6 +23,8 @@ shared simulation contract.
 - **Immutable English nicknames** — chosen once at registration (with a permanent
   warning), English letters/digits/`_` only, no emoji. Cannot ever be changed.
 - **Progression** — trophies, wins/losses, gold.
+- **Localization** — full **English / Russian** UI; picking Русский at
+  registration translates the entire interface.
 
 ## Repository layout
 

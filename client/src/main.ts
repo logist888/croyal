@@ -3,10 +3,11 @@
  */
 import { api } from './net';
 import { state } from './state';
-import { initTelegram, getInitData, getDevUser } from './telegram';
+import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
 import { renderRegister, renderMenu, renderClans, setUI, type Nav } from './ui';
 import { startBattle } from './battle';
 import { startBoss } from './boss';
+import { t, setLang, type Lang } from './i18n';
 
 const nav: Nav = {
   toMenu: () => renderMenu(nav),
@@ -25,7 +26,7 @@ function loading(text: string) {
 
 async function boot() {
   initTelegram();
-  loading('Connecting…');
+  loading(t('common.connecting'));
 
   const initData = getInitData();
   const devUser = initData ? undefined : getDevUser();
@@ -35,12 +36,15 @@ async function boot() {
     if (res.registered && res.token && res.profile) {
       state.token = res.token;
       state.profile = res.profile;
+      setLang(res.profile.language as Lang);
       nav.toMenu();
     } else {
+      // No account yet — default the registration screen to the device language.
+      setLang(suggestedLanguage());
       nav.toRegister({ telegramId: res.telegramId ?? devUser?.id, suggested: res.suggestedNickname });
     }
   } catch (e) {
-    loading(`Cannot reach server: ${(e as Error).message}. Is the backend running on :3001?`);
+    loading(t('common.serverUnreachable', { msg: (e as Error).message }));
   }
 }
 

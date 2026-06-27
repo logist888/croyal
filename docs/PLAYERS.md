@@ -28,7 +28,7 @@ explicit confirmation checkbox before the account can be created.
 | `id` | internal UUID |
 | `telegramId` | Telegram user id (identity) |
 | `nickname` | immutable, English-only |
-| `language` | `en` / `ru` (chosen at registration) |
+| `language` | `en` / `ru` (chosen at registration) — drives full UI localization |
 | `trophies` | ladder rating (floored at 0) |
 | `wins` / `losses` | match record |
 | `gold` / `gems` | currencies |

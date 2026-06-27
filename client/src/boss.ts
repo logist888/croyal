@@ -8,6 +8,7 @@ import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
 import { GameField } from './field';
 import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, type HandUI } from './hud';
 import { haptic } from './telegram';
+import { t } from './i18n';
 
 export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   let field: GameField | null = null;
@@ -25,15 +26,15 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   root.className = 'hud';
   root.innerHTML = `
     <div class="hud-top">
-      <button id="leave" class="danger" style="padding:6px 10px">Leave</button>
-      <span id="diff" class="badge">solo</span>
+      <button id="leave" class="danger" style="padding:6px 10px">${t('common.leave')}</button>
+      <span id="diff" class="badge">${t('boss.solo')}</span>
       <span id="timer">3:00</span>
     </div>
     <div class="elixir-bar"><div class="elixir-fill" id="boss-hp" style="background:linear-gradient(90deg,#7e57c2,#b388ff)"></div></div>
     <div class="muted" id="bosshp-label" style="padding:0 12px">Boss</div>
     ${elixirBarHtml()}
     <div class="hand" id="hand"></div>
-    <div class="card"><div class="muted">Raiders</div><div id="parts"></div></div>`;
+    <div class="card"><div class="muted">${t('boss.raiders')}</div><div id="parts"></div></div>`;
   setUI(root);
   setGameVisible(true);
 
@@ -62,10 +63,10 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     const bossHp = root.querySelector<HTMLDivElement>('#boss-hp')!;
     bossHp.style.width = `${Math.max(0, (snap.bossHp / snap.bossMaxHp) * 100)}%`;
     root.querySelector<HTMLDivElement>('#bosshp-label')!.textContent =
-      `Boss ${snap.bossHp} / ${snap.bossMaxHp} HP`;
+      t('boss.hp', { hp: snap.bossHp, max: snap.bossMaxHp });
     root.querySelector<HTMLSpanElement>('#timer')!.textContent = fmtTime(snap.timeLeft);
     const diff = root.querySelector<HTMLSpanElement>('#diff')!;
-    diff.textContent = snap.difficultyMultiplier >= 2 ? `CO-OP ×${snap.difficultyMultiplier}` : 'solo';
+    diff.textContent = snap.difficultyMultiplier >= 2 ? t('boss.coop', { n: snap.difficultyMultiplier }) : t('boss.solo');
 
     const parts = root.querySelector<HTMLDivElement>('#parts')!;
     parts.innerHTML = snap.participants
@@ -81,16 +82,16 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     const win = result.outcome === 'win';
     haptic(win ? 'success' : 'error');
     node.innerHTML = `
-      <h1>${win ? '🐉 Boss defeated!' : '⏱️ Raid failed'}</h1>
+      <h1>${win ? t('boss.defeated') : t('boss.failed')}</h1>
       <div class="card col">
-        <div>Reward: <b>${result.rewardGold} gold</b></div>
-        <div class="muted">Damage dealt</div>
+        <div>${t('boss.reward', { gold: result.rewardGold })}</div>
+        <div class="muted">${t('boss.damage')}</div>
         ${result.participants
           .sort((a, b) => b.damageDealt - a.damageDealt)
           .map((p) => `<div class="participant"><span>${escapeHtml(p.nickname)}</span><b>${p.damageDealt}</b></div>`)
           .join('')}
       </div>
-      <button id="ok" class="accent">Back to clan</button>`;
+      <button id="ok" class="accent">${t('boss.backToClan')}</button>`;
     setUI(node);
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toClans();
   }
@@ -98,7 +99,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   try {
     await socket.connect();
   } catch (e) {
-    setUI(Object.assign(document.createElement('div'), { className: 'screen', innerHTML: `<div class="card">Connection failed: ${(e as Error).message}</div>` }));
+    setUI(Object.assign(document.createElement('div'), { className: 'screen', innerHTML: `<div class="card">${t('common.connFailed', { msg: (e as Error).message })}</div>` }));
     return;
   }
 

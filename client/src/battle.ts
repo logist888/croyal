@@ -7,6 +7,7 @@ import { setUI, setGameVisible, type Nav } from './ui';
 import { GameField } from './field';
 import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, type HandUI } from './hud';
 import { haptic } from './telegram';
+import { t, reasonText } from './i18n';
 
 export async function startBattle(nav: Nav): Promise<void> {
   let field: GameField | null = null;
@@ -15,14 +16,13 @@ export async function startBattle(nav: Nav): Promise<void> {
   let off: (() => void) | null = null;
   let inMatch = false;
 
-  // searching screen
   setGameVisible(false);
   const searching = document.createElement('div');
   searching.className = 'screen';
   searching.innerHTML = `
-    <h1>Finding opponent…</h1>
-    <div class="card"><div class="muted">Matchmaking by trophies. A practice bot joins if nobody is found.</div></div>
-    <button id="cancel" class="secondary">Cancel</button>`;
+    <h1>${t('battle.finding')}</h1>
+    <div class="card"><div class="muted">${t('battle.findingHint')}</div></div>
+    <button id="cancel" class="secondary">${t('common.cancel')}</button>`;
   setUI(searching);
   searching.querySelector<HTMLButtonElement>('#cancel')!.onclick = () => {
     socket.send({ t: 'cancelQueue' });
@@ -42,7 +42,7 @@ export async function startBattle(nav: Nav): Promise<void> {
     root.className = 'hud';
     root.innerHTML = `
       <div class="hud-top">
-        <button id="leave" class="danger" style="padding:6px 10px">Leave</button>
+        <button id="leave" class="danger" style="padding:6px 10px">${t('common.leave')}</button>
         <span id="score">0 — 0</span>
         <span id="timer">4:00</span>
       </div>
@@ -80,13 +80,13 @@ export async function startBattle(nav: Nav): Promise<void> {
     const win = result.outcome === 'win';
     haptic(win ? 'success' : 'error');
     node.innerHTML = `
-      <h1>${win ? '🏆 Victory!' : '💀 Defeat'}</h1>
+      <h1>${win ? t('battle.victory') : t('battle.defeat')}</h1>
       <div class="card col">
-        <div>Towers: <b>${result.yourScore} — ${result.opponentScore}</b></div>
-        <div>Result reason: <span class="muted">${result.reason}</span></div>
-        <div>Trophies: <b>${result.trophyDelta >= 0 ? '+' : ''}${result.trophyDelta}</b></div>
+        <div>${t('battle.towers', { a: result.yourScore, b: result.opponentScore })}</div>
+        <div class="muted">${t('battle.reason', { reason: reasonText(result.reason) })}</div>
+        <div>${t('battle.trophies', { delta: (result.trophyDelta >= 0 ? '+' : '') + result.trophyDelta })}</div>
       </div>
-      <button id="ok" class="accent">Back to menu</button>`;
+      <button id="ok" class="accent">${t('battle.backToMenu')}</button>`;
     setUI(node);
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toMenu();
   }
@@ -94,7 +94,7 @@ export async function startBattle(nav: Nav): Promise<void> {
   try {
     await socket.connect();
   } catch (e) {
-    searching.innerHTML = `<div class="card">Connection failed: ${(e as Error).message}</div>`;
+    searching.innerHTML = `<div class="card">${t('common.connFailed', { msg: (e as Error).message })}</div>`;
     return;
   }
 

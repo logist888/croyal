@@ -3,6 +3,7 @@
  */
 import { ARENA_WIDTH, ARENA_HEIGHT, ELIXIR_MAX, getCard } from '@croyal/shared';
 import { hex, escapeHtml } from './ui';
+import { cardName } from './i18n';
 
 export function computeFieldSize(): { w: number; h: number } {
   const availH = Math.max(360, window.innerHeight - 230);
@@ -30,7 +31,7 @@ export function buildHand(container: HTMLElement, onSelect: () => void): HandUI 
       const affordable = elixir >= c.cost;
       cell.className = 'handcard' + (selectedId === id ? ' selected' : '') + (affordable ? '' : ' unaffordable');
       cell.style.background = hex(c.color);
-      cell.innerHTML = `${escapeHtml(c.name)}<div class="cost">${c.cost}</div>`;
+      cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
       cell.onclick = () => {
         if (!affordable) return;
         selectedId = selectedId === id ? null : id;
