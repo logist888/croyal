@@ -11,7 +11,11 @@
     "meteor": "/assets/cards/meteor.png",
     "volley": "/assets/cards/volley.png"
   },
-  "units": {},
+  "units": {
+    "bombthrower": "/assets/units/bombthrower.png",
+    "archers": "/assets/units/archers.png",
+    "ratpack": "/assets/units/ratpack.png"
+  },
   "towers": {},
   "boss": {},
   "arena": {},

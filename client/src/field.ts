@@ -31,7 +31,7 @@ function textureKeyFor(e: EntitySnapshot): string | null {
 function boxTiles(e: EntitySnapshot): number {
   if (e.id === 'boss') return 3.4;
   if (e.kind === 'tower') return e.towerType === 'king' ? 2.4 : 2.0;
-  return 1.5;
+  return 2.0; // textured unit sprites (slightly larger so the art reads on the field)
 }
 
 class FieldScene extends Phaser.Scene {

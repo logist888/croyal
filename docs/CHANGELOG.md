@@ -3,6 +3,19 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-6 — Battle unit sprites (partial)
+- Sliced uploaded battle-sprite art into `client/public/assets/units/` and wired
+  it into the Phaser field (`scripts/slice-units.mjs`: mass-based alpha crop +
+  resize to 256px). Unit on-field size bumped so the art reads.
+- Identified 3 units by colour signature (preview blocked by the content filter):
+  **bombthrower, archers, ratpack**. These now render on the battlefield.
+- Findings on the upload batch (needs follow-up):
+  - two files were byte-identical duplicates (only 6 unique images for 7 troops);
+  - two files have opaque (non-transparent) grey backgrounds, so they can't be
+    dropped on the field cleanly (subject is also grey → can't auto-key);
+  - footman / blademaster / sharpshooter still need identification + clean
+    transparent cutouts; colossus needs a transparent version.
+
 ## build-5 — Real art wired in (cards, logo, menu)
 - Sliced the uploaded ChatGPT art batch with a tailored slicer
   (`scripts/preslice-uploads.mjs`):
