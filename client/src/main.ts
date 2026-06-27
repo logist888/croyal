@@ -8,6 +8,7 @@ import { renderRegister, renderMenu, renderClans, setUI, logoHtml, type Nav } fr
 import { startBattle } from './battle';
 import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
+import { loadAssetManifest } from './assets';
 
 const nav: Nav = {
   toMenu: () => renderMenu(nav),
@@ -27,6 +28,7 @@ function loading(text: string) {
 async function boot() {
   initTelegram();
   loading(t('common.connecting'));
+  await loadAssetManifest();
 
   const initData = getInitData();
   const devUser = initData ? undefined : getDevUser();

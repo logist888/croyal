@@ -3,6 +3,19 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-4 — Art pipeline (drop-in sprites)
+- New `art/incoming/<category>/` folder where raw art is dropped (cards, units,
+  towers, boss, arena, ui, logo), with naming/size conventions in its README.
+- `npm run slice` (`scripts/slice-art.mjs`, jimp) standardizes/crops each image,
+  cuts `@COLSxROWS` sprite sheets into frames, copies the logo, and rebuilds
+  `client/public/assets/manifest.json`.
+- Client now consumes sliced art: DOM card icons (hand, deck, next-card preview),
+  and Phaser textures for units/towers/boss via a sprite pool, plus an optional
+  arena background image. Everything **falls back to the built-in placeholder
+  look** when art is missing, so assets can be added piece by piece.
+- Verified: slicer tested on sample images (single + sheet); client typecheck +
+  build green.
+
 ## build-3 — UI theme overhaul + logo support
 - Reskinned the whole interface to a polished, original "arena game" look
   (wood + gold panels, chunky 3D gold/blue/red buttons, green arena palette).

@@ -4,6 +4,7 @@
 import { ARENA_WIDTH, ARENA_HEIGHT, ELIXIR_MAX, getCard } from '@croyal/shared';
 import { hex, escapeHtml } from './ui';
 import { cardName } from './i18n';
+import { cardImageUrl } from './assets';
 
 export function computeFieldSize(): { w: number; h: number } {
   const availH = Math.max(360, window.innerHeight - 250);
@@ -30,8 +31,16 @@ export function buildHand(container: HTMLElement, onSelect: () => void): HandUI 
       const cell = document.createElement('div');
       const affordable = elixir >= c.cost;
       cell.className = 'handcard' + (selectedId === id ? ' selected' : '') + (affordable ? '' : ' unaffordable');
-      cell.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
-      cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
+      const art = cardImageUrl(id);
+      if (art) {
+        cell.style.backgroundImage = `url(${art})`;
+        cell.style.backgroundSize = 'cover';
+        cell.style.backgroundPosition = 'center';
+        cell.innerHTML = `<div class="cost">${c.cost}</div>`;
+      } else {
+        cell.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
+        cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
+      }
       cell.onclick = () => {
         if (!affordable) return;
         selectedId = selectedId === id ? null : id;
@@ -77,9 +86,18 @@ export function setNextCard(root: HTMLElement, id: string): void {
   if (!el || !id) return;
   const c = getCard(id);
   if (!c) return;
-  el.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
   const name = root.querySelector<HTMLSpanElement>('#next-name');
-  if (name) name.textContent = cardName(id);
+  const art = cardImageUrl(id);
+  if (art) {
+    el.style.backgroundImage = `url(${art})`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    if (name) name.textContent = '';
+  } else {
+    el.style.backgroundImage = '';
+    el.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
+    if (name) name.textContent = cardName(id);
+  }
 }
 
 export function fmtTime(sec: number): string {

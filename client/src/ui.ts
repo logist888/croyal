@@ -7,6 +7,7 @@ import { api } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, type Lang } from './i18n';
+import { cardImageUrl } from './assets';
 
 export interface Nav {
   toMenu(): void;
@@ -165,8 +166,16 @@ export function renderMenu(nav: Nav): void {
   for (const id of p.deck) {
     const c = getCard(id)!;
     const cell = div('handcard');
-    cell.style.background = hex(c.color);
-    cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
+    const art = cardImageUrl(id);
+    if (art) {
+      cell.style.backgroundImage = `url(${art})`;
+      cell.style.backgroundSize = 'cover';
+      cell.style.backgroundPosition = 'center';
+      cell.innerHTML = `<div class="cost">${c.cost}</div>`;
+    } else {
+      cell.style.background = hex(c.color);
+      cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
+    }
     deck.appendChild(cell);
   }
 
