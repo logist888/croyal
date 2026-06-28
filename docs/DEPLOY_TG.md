@@ -35,7 +35,9 @@ ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo amd64)
 curl -L -o cloudflared.tgz "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz"
 tar -xzf cloudflared.tgz && chmod +x cloudflared
 xattr -d com.apple.quarantine ./cloudflared 2>/dev/null || true   # skip macOS Gatekeeper
-./cloudflared tunnel --url http://localhost:3001
+# --protocol http2 avoids QUIC/UDP which many networks block
+# ("failed to dial to edge with quic: timeout")
+./cloudflared tunnel --protocol http2 --url http://localhost:3001
 ```
 Cloudflared prints a URL like `https://something.trycloudflare.com`. That's your
 public Mini App URL. (No-install fallback for a quick *browser* test:
