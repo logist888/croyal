@@ -3,66 +3,82 @@
 Working notes that translate the reference game's **mechanics, structure and UX
 flows** into changes for Tower Clash. We replicate *how it works and is laid out* —
 **all art, names, logo and branding stay our own original work** (we never ship the
-reference screenshots or copy its artwork/trademarks).
+reference screenshots or copy its artwork/trademarks/character names).
 
-> Status: **batch 1**, built from screenshots shared in chat so far. The files
-> dropped into `art/incoming/ui/` did not reach the repo (the laptop folder isn't a
-> git clone), so this will be expanded as more screens arrive in chat.
-
----
-
-## 1. Launch & onboarding (from screenshots)
-- Privacy/cookies consent on first launch (Accept all / Decline all).
-- Age slider with a note that it "does not affect gameplay".
-- Auto sign-in with an assigned username shown ("You signed in as …").
-- A coach character runs a short **tutorial** of training battles before the
-  multiplayer arena unlocks.
-
-**Adopt:** optional consent screen + a guided tutorial (vs a live opponent bot).
-**Keep:** our immutable English-nickname registration (explicit earlier requirement).
-
-## 2. Arena & towers (tutorial screens)
-- Top = enemy (red), bottom = player (blue); each side: 1 King + 2 Princess towers;
-  central river with 2 bridges; checkered grass lanes.
-- Tutorial tower HP seen on-screen: Princess ≈ **280** (tutorial-reduced), King
-  **1400**; both show a level "1" badge.
-
-**Adopt:** matches our current layout. Consider per-level tower HP and a level
-badge on towers later.
-
-## 3. Main hub structure (from UI mockups)
-- Top bar: avatar + name + **level** + trophy/progress bar; currency counters
-  (gold / gems / elixir) each with a "+"; mail / friends / settings icons.
-- Primary tabs: **Battle** (big) + Cards(Deck) / Clan / Shop.
-- Side menu: Home / Battle / Deck / Clan / Shop / Quests / Events / Leaderboard /
-  Settings.
-- Center: a **chests** row (wooden → legendary) with Open + unlock timers; plus
-  Missions / Achievements / Trophies / Ranked / Season Pass / Friends.
-
-**Adopt (original art):** restructure our menu into a hub — top bar with
-name + level + trophies + gold/gems, an **arena/league** band, a prominent Battle
-button, and Cards/Clan. Chests/shop/season-pass are later phases.
-
-## 4. Battle HUD
-- Crown counter (towers destroyed) at the top, round timer, elixir bar (max 10)
-  with the next-card preview, emote button.
-
-**Adopt:** show destroyed-towers as **crown icons**; add emotes later. (Timer,
-elixir bar + next card already exist.)
-
-## 5. Progression (general structure)
-- **Arenas/leagues** gated by trophy thresholds.
-- Card **rarity** + **levels** (upgrade with gold + duplicate cards).
-- **Chests** as the main reward drip (with unlock timers).
-- Account/King level from card-upgrade XP.
-
-**Adopt:** league names by trophy range (originals) now; card levels, chests and
-king level in later phases.
+> Source: 20 gameplay screenshots in `art/incoming/ui/` (analyzed for functional
+> facts only). Numbers below are the reference's values; we re-tune our own.
 
 ---
 
-## Mapping → our codebase
-- Leagues/arenas, level helper → `shared/src/constants.ts`.
-- Hub layout → `client/src/ui.ts` (`renderMenu`) + `style.css`.
-- Crown icons / emotes → `client/src/battle.ts` + `hud.ts`.
-- Tower levels / card levels → `shared` stats + `server` simulation (later).
+## 1. Onboarding / cold start (screen flow)
+`Load(%) → Age gate (slider, "does not affect gameplay") → Privacy/consent
+(Accept all / Decline all) → auto-login toast ("signed in as <name>") →
+scripted tutorial battle vs an AI coach → result → chest reward → hub.`
+- New players are dropped into a **tutorial battle**, not the hub.
+- **Adopt:** optional consent + age screens; a guided first battle (we have a bot).
+- **Keep:** our immutable English-nickname registration (explicit earlier requirement).
+
+## 2. Battle board & scoring (CROWNS)
+- Vertical board, player bottom / enemy top, **river + 2 bridges**, left & right lanes.
+- 3 towers/side: 1 King + 2 Princess/Crown. Tower HP seen: tutorial princess **280**,
+  standard **1400**; towers carry a **level badge**.
+- **Score = crowns**: destroy a tower → a crown, **max 3/side**. Crowns shown live
+  on the battlefield and tallied on the result screen (your crowns vs opponent's).
+- Camera zooms (close while placing, wide late-game).
+
+## 3. Battle HUD
+- 4-card **hand** row, each with a pink **elixir-cost** badge; a **"Next:"** card
+  preview (rotating deck queue); **elixir bar** segmented, current value + **"Max 10"**.
+- Deploy = tap a card → tap a valid tile on your half. Crown counters at top, timer.
+
+## 4. Hub layout
+- **Top bar = 3 resources:** account/King **level** (XP bar), **gold**, **gems** (premium).
+- **Bottom nav (5):** Shop/Chests · Collection (new-item badge) · **Battle** (center) ·
+  Clan · Ladder/Ranked.
+- Tabs in collection: **Decks** / **Collection**; a card-type filter row.
+
+## 5. Deck & cards
+- **Deck = 8 cards** (2×4). Card shows elixir cost, **level**, **upgrade progress bar**,
+  optional "New!". Deck shows **average elixir** (e.g. 3.6).
+- Card metadata: **Rarity** (Common/Rare/Epic/Legendary, color-coded) + **Type** (Warrior,
+  Ranged, Spell, Building…). Rarity affects starting level.
+- **Card detail modal:** rarity, type, an embedded animated arena preview, Upgrade
+  (gold) + Select/Use buttons.
+
+## 6. Upgrades & progression
+- Cards level by collecting **duplicate cards** (fill bar e.g. 2/2 → next tier needs more);
+  upgrading **costs gold** and also grants **account XP** (feeds King level).
+- Per-level stat scaling on **Damage, DPS, Health** (flat delta per level).
+- **King/account level** with XP bar in the hub.
+- **Arenas/leagues** gate card unlocks ("Unlocks at: Arena N"); collection tracked as
+  "Found X / total".
+
+## 7. Chests & economy
+- **Chests** are the main reward for winning. Open with a **per-card reveal** (countdown
+  badge), then a **"Received:"** summary (gold + cards). Currency: **gold** + **gems**.
+
+## 8. Clans
+- Social layer; opponent shows clan name; new player is "Not in a clan".
+
+---
+
+## Implemented in build-7
+- **Crowns** scoring surfaced in the battle HUD (`👑 x — y 👑`) and on the result
+  screen (crown icons); win wording is "Crowns".
+- **Hub** main menu: top bar (avatar + nickname + **level** + 🏆/🪙/💎 counters),
+  **league band** with progress to the next arena, prominent **Battle**, Clan, and a
+  deck panel showing **average elixir** and **rarity-colored** card borders.
+- **Leagues/arenas** by trophies (`shared/constants.ts`, original names), `accountLevel`.
+- **Card rarity + role/type** added to the catalog (`shared/cards.ts`) and shown.
+
+## Planned next phases (need go-ahead — larger backend+frontend work)
+1. **Card collection + levels + upgrades** (per-user inventory, gold cost, stat scaling,
+   account XP) + a **card detail modal**.
+2. **Chests & reward reveal** after wins (gold + card drops).
+3. **Onboarding** (consent/age screens) + a scripted tutorial battle.
+4. **Battle HUD polish**: tower level badges, emotes, "Max 10" label, camera zoom.
+
+## Mapping → codebase
+- Leagues/level/rarity/avg-elixir → `shared/`. Hub/crowns/deck → `client/ui.ts`,
+  `battle.ts`, `style.css`. Collection/upgrades/chests → `server/store.ts` + new client
+  screens (next phase).

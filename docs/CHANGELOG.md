@@ -3,6 +3,19 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-7 — Original-game study: hub, leagues, crowns, rarity
+- Studied 20 gameplay screenshots and compiled a functional spec into
+  `docs/REFERENCE_NOTES.md` (mechanics/structure/UX only — our art stays original).
+- **Crowns**: battle score surfaced as crowns in the HUD (`👑 x — y 👑`) and on the
+  result screen (crown icons); win text now reads "Crowns".
+- **Hub menu**: top bar (avatar + nickname + account **level** + 🏆/🪙/💎 counters),
+  a **league/arena band** with progress to the next arena, a big Battle button, Clan,
+  and a deck panel showing **average elixir** + **rarity-colored** card borders.
+- **Leagues/arenas** by trophy thresholds + `accountLevel` helper (`shared/constants.ts`,
+  original names). **Card rarity + role/type** added to the catalog and displayed.
+- Fixed `scripts/backup.sh` to handle filenames with spaces (tar fallback).
+- Verified: typecheck + 22 tests + client build all green.
+
 ## build-6 — Battle unit sprites (partial)
 - Sliced uploaded battle-sprite art into `client/public/assets/units/` and wired
   it into the Phaser field (`scripts/slice-units.mjs`: mass-based alpha crop +

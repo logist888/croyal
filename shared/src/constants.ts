@@ -60,6 +60,39 @@ export function otherSide(side: Side): Side {
   return side === 'A' ? 'B' : 'A';
 }
 
+// --- Leagues / arenas (trophy-gated). Original names. ---
+export interface League {
+  min: number;
+  en: string;
+  ru: string;
+}
+
+export const LEAGUES: League[] = [
+  { min: 0, en: 'Training Camp', ru: 'Учебный лагерь' },
+  { min: 100, en: 'Forest Clearing', ru: 'Лесная поляна' },
+  { min: 300, en: 'Stone Fort', ru: 'Каменный форт' },
+  { min: 600, en: 'Fire Forge', ru: 'Огненная кузня' },
+  { min: 1000, en: 'Frost Peak', ru: 'Ледяной пик' },
+  { min: 1500, en: 'Storm Arena', ru: 'Грозовая арена' },
+  { min: 2200, en: 'Royal Arena', ru: 'Королевская арена' },
+  { min: 3000, en: 'Legend League', ru: 'Лига легенд' },
+];
+
+export function leagueForTrophies(trophies: number): { index: number; league: League; nextMin: number | null } {
+  let index = 0;
+  for (let i = 0; i < LEAGUES.length; i++) if (trophies >= LEAGUES[i].min) index = i;
+  const nextMin = index + 1 < LEAGUES.length ? LEAGUES[index + 1].min : null;
+  return { index, league: LEAGUES[index], nextMin };
+}
+
+/** Account/"king" level derived from wins (card-upgrade XP is a later phase). */
+export function accountLevel(wins: number): number {
+  return Math.max(1, Math.floor(wins / 2) + 1);
+}
+
+/** Max crowns per side (2 princess + 1 king). */
+export const MAX_CROWNS = 3;
+
 // --- Clan boss raid ---
 export const BOSS_RAID_SECONDS = 180;
 export const BOSS_BASE_HP = 12000;

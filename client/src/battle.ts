@@ -70,7 +70,7 @@ export async function startBattle(nav: Nav): Promise<void> {
     const score = root.querySelector<HTMLSpanElement>('#score');
     if (score) {
       const enemy = yourSide === 'A' ? 'B' : 'A';
-      score.textContent = `${snap.score[yourSide]} — ${snap.score[enemy]}`;
+      score.textContent = `👑 ${snap.score[yourSide]} — ${snap.score[enemy]} 👑`;
     }
   }
 
@@ -80,10 +80,11 @@ export async function startBattle(nav: Nav): Promise<void> {
     node.className = 'screen';
     const win = result.outcome === 'win';
     haptic(win ? 'success' : 'error');
+    const crowns = (n: number) => '👑'.repeat(n) + '·'.repeat(Math.max(0, 3 - n));
     node.innerHTML = `
       <h1>${win ? t('battle.victory') : t('battle.defeat')}</h1>
-      <div class="card col">
-        <div>${t('battle.towers', { a: result.yourScore, b: result.opponentScore })}</div>
+      <div class="card col" style="align-items:center">
+        <div style="font-size:26px; letter-spacing:6px">${crowns(result.yourScore)} <span class="muted" style="font-size:14px">vs</span> ${crowns(result.opponentScore)}</div>
         <div class="muted">${t('battle.reason', { reason: reasonText(result.reason) })}</div>
         <div>${t('battle.trophies', { delta: (result.trophyDelta >= 0 ? '+' : '') + result.trophyDelta })}</div>
       </div>

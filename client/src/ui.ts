@@ -2,7 +2,10 @@
  * DOM screens: registration, main menu, clans. Battle/boss rendering lives in
  * battle.ts / boss.ts (Phaser canvas + HUD). All visible text goes through i18n.
  */
-import { getCard, NICKNAME_REGEX, NICKNAME_MIN, NICKNAME_MAX } from '@croyal/shared';
+import {
+  getCard, NICKNAME_REGEX, NICKNAME_MIN, NICKNAME_MAX,
+  leagueForTrophies, accountLevel, averageElixir, RARITY_COLOR, LEAGUES,
+} from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
@@ -137,26 +140,57 @@ export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?
   };
 }
 
-// --- Main menu ---
+// --- Main menu (hub: top bar + league band + battle + nav + deck) ---
 export function renderMenu(nav: Nav): void {
   setGameVisible(false);
   const p = state.profile!;
+  const lang = getLang();
+  const lvl = accountLevel(p.wins);
+  const { index, league, nextMin } = leagueForTrophies(p.trophies);
+  const leagueName = lang === 'ru' ? league.ru : league.en;
+  const nextLeague = LEAGUES[index + 1];
+  const nextName = nextLeague ? (lang === 'ru' ? nextLeague.ru : nextLeague.en) : '';
+  const pct = nextMin !== null
+    ? Math.min(100, Math.max(0, ((p.trophies - league.min) / (nextMin - league.min)) * 100))
+    : 100;
+  const avg = averageElixir(p.deck);
+
   const node = div('screen');
   node.innerHTML = `
-    ${logoHtml(true)}
-    <div class="row space-between">
-      <h1>${t('menu.greeting', { name: escapeHtml(p.nickname) })}</h1>
+    <div class="topbar">
+      <div class="player">
+        <img class="avatar" src="/logo.png" alt="" onerror="this.onerror=null;this.src='/logo.svg'">
+        <div class="pinfo">
+          <div class="pname">${escapeHtml(p.nickname)}</div>
+          <div class="plvl">${t('menu.level', { n: lvl })}</div>
+        </div>
+      </div>
+      <div class="currencies">
+        <span class="cur">🏆 ${p.trophies}</span>
+        <span class="cur">🪙 ${p.gold}</span>
+        <span class="cur">💎 ${p.gems}</span>
+      </div>
     </div>
-    <div class="card row space-between">
-      <div class="stat"><b>${p.trophies}</b><span class="muted">${t('menu.trophies')}</span></div>
-      <div class="stat"><b>${p.wins}</b><span class="muted">${t('menu.wins')}</span></div>
-      <div class="stat"><b>${p.losses}</b><span class="muted">${t('menu.losses')}</span></div>
-      <div class="stat"><b>${p.gold}</b><span class="muted">${t('menu.gold')}</span></div>
+
+    <div class="league card">
+      <div class="row space-between">
+        <b>🏟 ${escapeHtml(leagueName)}</b>
+        <span class="muted">${p.wins}W / ${p.losses}L</span>
+      </div>
+      <div class="league-bar"><div class="league-fill" style="width:${pct}%"></div></div>
+      <div class="muted">${nextMin !== null
+        ? t('menu.toNext', { n: Math.max(0, nextMin - p.trophies), name: nextName })
+        : t('menu.topLeague')}</div>
     </div>
-    <button id="battle" class="accent">${t('menu.battle')}</button>
+
+    <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
     <button id="clans" class="secondary">${t('menu.clans')}</button>
+
     <div class="card">
-      <div class="muted">${t('menu.yourDeck')}</div>
+      <div class="row space-between">
+        <div class="muted">${t('menu.yourDeck')}</div>
+        <div class="muted">${t('menu.avgElixir', { v: avg })}</div>
+      </div>
       <div class="hand" id="deck"></div>
     </div>
   `;
@@ -174,6 +208,7 @@ export function renderMenu(nav: Nav): void {
       cell.style.background = hex(c.color);
       cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
     }
+    cell.style.border = `2px solid ${hex(RARITY_COLOR[c.rarity])}`;
     deck.appendChild(cell);
   }
 
