@@ -1,0 +1,16 @@
+# One-click-ish deploy to Render (gives a permanent https URL for the Mini App).
+# Connect this repo in the Render dashboard; it reads this file.
+services:
+  - type: web
+    name: tower-clash
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build --workspace client
+    startCommand: npm run start --workspace server
+    envVars:
+      # Lets you test inside Telegram without putting a bot token here.
+      # For a real launch, remove this and set BOT_TOKEN instead.
+      - key: ALLOW_DEV_AUTH
+        value: "1"
+      # - key: BOT_TOKEN
+      #   sync: false   # set your @BotFather token in the dashboard for verified auth

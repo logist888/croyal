@@ -50,12 +50,35 @@ export function verifyInitData(initData: string): AuthResult {
   }
 }
 
+/** Parse the `user` field out of initData WITHOUT verifying the signature. */
+function parseInitDataUser(initData: string): TelegramUser | null {
+  try {
+    const raw = new URLSearchParams(initData).get('user');
+    return raw ? (JSON.parse(raw) as TelegramUser) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Authenticate an auth request. `initData` is the Telegram payload; `devUser`
  * is an optional fallback (id + username) accepted only in dev mode.
+ *
+ * When BOT_TOKEN is set, initData is cryptographically verified. When it is NOT
+ * set (dev/test), we trust the initData payload as-is so the Mini App can be
+ * tested inside Telegram without putting the bot token on the server. INSECURE —
+ * set BOT_TOKEN for any real deployment.
  */
 export function authenticate(initData: string | undefined, devUser?: { id: number; username?: string }): AuthResult {
-  if (initData) return verifyInitData(initData);
+  if (initData) {
+    const verified = verifyInitData(initData);
+    if (verified.ok) return verified;
+    if (ALLOW_DEV_AUTH) {
+      const user = parseInitDataUser(initData);
+      if (user && Number.isFinite(user.id)) return { ok: true, user };
+    }
+    return verified;
+  }
   if (ALLOW_DEV_AUTH && devUser && Number.isFinite(devUser.id)) {
     return { ok: true, user: { id: devUser.id, username: devUser.username } };
   }

@@ -1,6 +1,9 @@
 /**
  * REST API for account + clan management. Battles/raids run over WebSocket (ws.ts).
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import {
@@ -151,6 +154,19 @@ export function createApp() {
       res.status(400).json({ error: (err as Error).message });
     }
   });
+
+  // --- Serve the built client (single origin: client + API + WS on one URL) ---
+  const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
+  if (existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method === 'GET' && !req.path.startsWith('/api')) {
+        res.sendFile(path.join(clientDist, 'index.html'));
+      } else {
+        next();
+      }
+    });
+  }
 
   return app;
 }

@@ -3,6 +3,20 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-10 — Telegram-ready single-origin hosting
+- Server now serves the **built client + API + WebSocket from one origin**
+  (`server` serves `client/dist`, SPA fallback for non-`/api` GETs). One HTTPS URL
+  runs the whole Mini App.
+- Client uses **same-origin** API/WS by default (`wss://<host>/ws`); local dev
+  points at `:3001` via `client/.env.development`.
+- **Test auth**: with `ALLOW_DEV_AUTH=1` the server trusts Telegram `initData`
+  unverified so the Mini App can be tested inside Telegram without the bot token
+  (set `BOT_TOKEN` for verified production auth).
+- Added `Dockerfile`, `.dockerignore`, `render.yaml`, root `npm start`
+  (build client → run server), and **docs/DEPLOY_TG.md** (tunnel + Render +
+  BotFather steps).
+- Verified: one server serves `/`, `/api/health`, `/assets/*`, `/logo.png`.
+
 ## fix — battle layout & deploy (browser)
 - The arena canvas was in a separate `#game` div rendered **below** the HUD, so the
   card hand appeared above the arena and the field sat below the fold (hard to tap).
