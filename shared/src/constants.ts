@@ -85,9 +85,35 @@ export function leagueForTrophies(trophies: number): { index: number; league: Le
   return { index, league: LEAGUES[index], nextMin };
 }
 
-/** Account/"king" level derived from wins (card-upgrade XP is a later phase). */
+/** Account/"king" level derived from wins (legacy; superseded by levelFromXp). */
 export function accountLevel(wins: number): number {
   return Math.max(1, Math.floor(wins / 2) + 1);
+}
+
+/** Account "king" level from accumulated XP (XP comes from card upgrades). */
+export function levelFromXp(xp: number): number {
+  let lvl = 1;
+  let need = 10;
+  let rem = Math.max(0, xp);
+  while (rem >= need && lvl < 50) {
+    rem -= need;
+    lvl += 1;
+    need = 10 * lvl;
+  }
+  return lvl;
+}
+
+/** Level + progress within the current level, for an XP bar. */
+export function xpProgress(xp: number): { level: number; into: number; need: number } {
+  let lvl = 1;
+  let need = 10;
+  let rem = Math.max(0, xp);
+  while (rem >= need && lvl < 50) {
+    rem -= need;
+    lvl += 1;
+    need = 10 * lvl;
+  }
+  return { level: lvl, into: rem, need };
 }
 
 /** Max crowns per side (2 princess + 1 king). */

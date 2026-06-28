@@ -36,9 +36,19 @@ export class Match {
     private onEnd: (match: Match) => void,
   ) {
     const seed = hashSeed(id);
-    this.sim = new Simulation(seatA.deck, seatB.deck, seed);
+    this.sim = new Simulation(seatA.deck, seatB.deck, seed, this.levelsFor(seatA), this.levelsFor(seatB));
     if (seatA.userId === null) this.botSide = 'A';
     if (seatB.userId === null) this.botSide = 'B';
+  }
+
+  /** Card levels for a seat's deck (bots / unknown -> level 1). */
+  private levelsFor(seat: MatchSeat): Record<string, number> {
+    const levels: Record<string, number> = {};
+    if (!seat.userId) return levels;
+    const user = this.store.getUser(seat.userId);
+    if (!user) return levels;
+    for (const id of seat.deck) levels[id] = user.cards[id]?.level ?? 1;
+    return levels;
   }
 
   start(): void {
@@ -149,12 +159,22 @@ export class Match {
   private persist(userId: string, isWinner: boolean, delta: number): void {
     const user = this.store.getUser(userId);
     if (!user) return;
+    // Card drops (a simple per-battle source until chests exist): spread +1 across
+    // the player's deck, more for the winner. Deterministic rotation by games played.
+    const n = isWinner ? 3 : 1;
+    const start = (user.wins + user.losses) % Math.max(1, user.deck.length);
+    const drops: Record<string, number> = {};
+    for (let i = 0; i < n; i++) {
+      const id = user.deck[(start + i) % user.deck.length];
+      drops[id] = (drops[id] ?? 0) + 1;
+    }
     this.store.updateUser(userId, {
       trophies: Math.max(0, user.trophies + delta),
       wins: user.wins + (isWinner ? 1 : 0),
       losses: user.losses + (isWinner ? 0 : 1),
       gold: user.gold + (isWinner ? 50 : 10),
     });
+    this.store.awardCards(userId, drops);
   }
 }
 

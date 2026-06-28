@@ -2,6 +2,12 @@ import type { Side, TowerType } from './constants';
 
 export type Language = 'en' | 'ru';
 
+/** Per-card inventory entry: current level + duplicate cards toward the next level. */
+export interface CardState {
+  level: number;
+  count: number;
+}
+
 export interface PlayerProfile {
   id: string; // internal id (derived from Telegram user id)
   telegramId: number;
@@ -12,7 +18,9 @@ export interface PlayerProfile {
   losses: number;
   gold: number;
   gems: number;
+  xp: number; // account XP (from card upgrades) -> king level
   deck: string[]; // 8 card ids
+  cards: Record<string, CardState>; // owned cards (id -> level/count)
   clanId: string | null;
   createdAt: number;
 }

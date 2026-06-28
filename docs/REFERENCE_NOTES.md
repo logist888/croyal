@@ -71,10 +71,13 @@ scripted tutorial battle vs an AI coach → result → chest reward → hub.`
 - **Leagues/arenas** by trophies (`shared/constants.ts`, original names), `accountLevel`.
 - **Card rarity + role/type** added to the catalog (`shared/cards.ts`) and shown.
 
-## Planned next phases (need go-ahead — larger backend+frontend work)
-1. **Card collection + levels + upgrades** (per-user inventory, gold cost, stat scaling,
-   account XP) + a **card detail modal**.
-2. **Chests & reward reveal** after wins (gold + card drops).
+## Phase 1 — DONE (build-8)
+Card collection + levels + upgrades: per-user inventory, gold+duplicate upgrades,
+account XP→King level, level stat scaling in the sim, Collection screen + card
+detail modal, battle card drops.
+
+## Planned next phases (in order)
+2. **Chests & reward reveal** after wins (gold + card drops shown as a chest open).
 3. **Onboarding** (consent/age screens) + a scripted tutorial battle.
 4. **Battle HUD polish**: tower level badges, emotes, "Max 10" label, camera zoom.
 

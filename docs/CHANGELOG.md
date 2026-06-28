@@ -3,6 +3,20 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-8 — Card collection, levels & upgrades (Phase 1)
+- **Per-user card inventory** (level + duplicate count) seeded for all cards at
+  registration; profile now carries `xp` and `cards`.
+- **Upgrades**: spend duplicate cards + gold to level a card (`/api/cards/:id/upgrade`),
+  which grants **account XP → King level** (`levelFromXp`). Costs scale per level
+  (`cardsToUpgrade`/`goldToUpgrade`), capped at `MAX_CARD_LEVEL`.
+- **Level stat scaling** applied in the authoritative simulation (+10%/level to HP,
+  damage, spell damage); match passes each player's card levels in.
+- **Card source**: battles now drop duplicate cards (winner more) until chests exist.
+- **Collection screen**: card grid (level + progress + rarity border) and a card
+  detail modal (rarity/type/cost/level + scaled HP/Damage/DPS + Upgrade). New "Cards"
+  hub entry; hub level now derives from XP.
+- 6 new tests (upgrade economy + stat scaling); 28 total, all green.
+
 ## build-7 — Original-game study: hub, leagues, crowns, rarity
 - Studied 20 gameplay screenshots and compiled a functional spec into
   `docs/REFERENCE_NOTES.md` (mechanics/structure/UX only — our art stays original).

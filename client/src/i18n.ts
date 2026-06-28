@@ -75,6 +75,31 @@ const EN: Dict = {
   'reason.timeout': 'time ran out',
   'reason.opponent_left': 'opponent left',
 
+  'menu.cards': '🃏 Cards',
+  'col.title': 'Collection',
+  'col.upgrade': 'Upgrade',
+  'col.maxLevel': 'Max level',
+  'col.gold': '{n} gold',
+  'col.cards': '{have}/{need} cards',
+  'col.notEnough': 'Need more cards or gold',
+  'card.hp': 'Health',
+  'card.dmg': 'Damage',
+  'card.dps': 'DPS',
+  'card.spellDmg': 'Spell dmg',
+  'card.rarity': 'Rarity',
+  'card.type': 'Type',
+  'rarity.common': 'Common',
+  'rarity.rare': 'Rare',
+  'rarity.epic': 'Epic',
+  'rarity.legendary': 'Legendary',
+  'role.warrior': 'Warrior',
+  'role.ranged': 'Ranged',
+  'role.tank': 'Tank',
+  'role.swarm': 'Swarm',
+  'role.splash': 'Splash',
+  'role.building': 'Building',
+  'role.spell': 'Spell',
+
   'boss.solo': 'solo',
   'boss.coop': 'CO-OP ×{n}',
   'boss.hp': 'Boss {hp} / {max} HP',
@@ -160,6 +185,31 @@ const RU: Dict = {
   'reason.timeout': 'вышло время',
   'reason.opponent_left': 'соперник вышел',
 
+  'menu.cards': '🃏 Карты',
+  'col.title': 'Коллекция',
+  'col.upgrade': 'Улучшить',
+  'col.maxLevel': 'Макс. уровень',
+  'col.gold': '{n} золота',
+  'col.cards': '{have}/{need} карт',
+  'col.notEnough': 'Нужно больше карт или золота',
+  'card.hp': 'Здоровье',
+  'card.dmg': 'Урон',
+  'card.dps': 'Урон/с',
+  'card.spellDmg': 'Урон закл.',
+  'card.rarity': 'Редкость',
+  'card.type': 'Тип',
+  'rarity.common': 'Обычная',
+  'rarity.rare': 'Редкая',
+  'rarity.epic': 'Эпическая',
+  'rarity.legendary': 'Легендарная',
+  'role.warrior': 'Воин',
+  'role.ranged': 'Стрелок',
+  'role.tank': 'Танк',
+  'role.swarm': 'Рой',
+  'role.splash': 'Сплеш',
+  'role.building': 'Здание',
+  'role.spell': 'Заклинание',
+
   'boss.solo': 'соло',
   'boss.coop': 'КООП ×{n}',
   'boss.hp': 'Босс {hp} / {max} HP',
@@ -201,4 +251,12 @@ export function cardName(id: string): string {
 /** Localized result reason. */
 export function reasonText(reason: string): string {
   return t(`reason.${reason}`);
+}
+
+export function rarityText(rarity: string): string {
+  return t(`rarity.${rarity}`);
+}
+
+export function roleText(role: string): string {
+  return t(`role.${role.toLowerCase()}`);
 }

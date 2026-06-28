@@ -4,12 +4,13 @@
  */
 import {
   getCard, NICKNAME_REGEX, NICKNAME_MIN, NICKNAME_MAX,
-  leagueForTrophies, accountLevel, averageElixir, RARITY_COLOR, LEAGUES,
+  leagueForTrophies, levelFromXp, averageElixir, RARITY_COLOR, LEAGUES,
+  MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats,
 } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
-import { t, setLang, getLang, cardName, type Lang } from './i18n';
+import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
 import { cardImageUrl } from './assets';
 
 export interface Nav {
@@ -18,6 +19,7 @@ export interface Nav {
   toClans(): void;
   toBattle(): void;
   toBoss(clanId: string): void;
+  toCollection(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -145,7 +147,7 @@ export function renderMenu(nav: Nav): void {
   setGameVisible(false);
   const p = state.profile!;
   const lang = getLang();
-  const lvl = accountLevel(p.wins);
+  const lvl = levelFromXp(p.xp);
   const { index, league, nextMin } = leagueForTrophies(p.trophies);
   const leagueName = lang === 'ru' ? league.ru : league.en;
   const nextLeague = LEAGUES[index + 1];
@@ -184,7 +186,10 @@ export function renderMenu(nav: Nav): void {
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
-    <button id="clans" class="secondary">${t('menu.clans')}</button>
+    <div class="row">
+      <button id="cards" class="secondary grow">${t('menu.cards')}</button>
+      <button id="clans" class="secondary grow">${t('menu.clans')}</button>
+    </div>
 
     <div class="card">
       <div class="row space-between">
@@ -213,7 +218,108 @@ export function renderMenu(nav: Nav): void {
   }
 
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
+  node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
   node.querySelector<HTMLButtonElement>('#clans')!.onclick = () => { haptic('light'); nav.toClans(); };
+}
+
+// --- Collection (cards: level, upgrade) ---
+export async function renderCollection(nav: Nav): Promise<void> {
+  setGameVisible(false);
+  // refresh profile (gold/xp/card counts may have changed)
+  try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
+  const p = state.profile!;
+  const node = div('screen');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('col.title')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div class="row space-between card">
+      <div><b>🃏 ${t('menu.level', { n: levelFromXp(p.xp) })}</b></div>
+      <div class="muted">🪙 ${p.gold}</div>
+    </div>
+    <div class="collection" id="grid"></div>
+  `;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+
+  const grid = node.querySelector<HTMLDivElement>('#grid')!;
+  for (const id of p.deck.concat(Object.keys(p.cards).filter((c) => !p.deck.includes(c)))) {
+    const c = getCard(id);
+    const cs = p.cards[id];
+    if (!c || !cs) continue;
+    const need = cardsToUpgrade(cs.level);
+    const ready = cs.level < MAX_CARD_LEVEL && cs.count >= need && p.gold >= goldToUpgrade(cs.level);
+    const cell = div('col-card');
+    cell.style.borderColor = hex(RARITY_COLOR[c.rarity]);
+    const art = cardImageUrl(id);
+    const bg = art
+      ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center top`
+      : `background:${hex(c.color)}`;
+    cell.innerHTML = `
+      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cost}</span></div>
+      <div class="col-lvl">${t('col.level', { n: cs.level })}${ready ? ' <span class="up-dot">⬆</span>' : ''}</div>
+      <div class="col-bar"><div class="col-fill" style="width:${Math.min(100, (cs.count / (need === Infinity ? cs.count || 1 : need)) * 100)}%"></div></div>
+      <div class="muted col-count">${cs.level >= MAX_CARD_LEVEL ? t('col.maxLevel') : t('col.cards', { have: cs.count, need })}</div>`;
+    cell.onclick = () => openCardDetail(nav, id);
+    grid.appendChild(cell);
+  }
+}
+
+function openCardDetail(nav: Nav, id: string): void {
+  const p = state.profile!;
+  const c = getCard(id)!;
+  const cs = p.cards[id];
+  const stats = scaledStats(c, cs.level);
+  const dps = c.damage && c.hitSpeed ? Math.round((stats.damage / c.hitSpeed)) : 0;
+  const need = cardsToUpgrade(cs.level);
+  const goldCost = goldToUpgrade(cs.level);
+  const maxed = cs.level >= MAX_CARD_LEVEL;
+  const canUp = !maxed && cs.count >= need && p.gold >= goldCost;
+
+  const statLine = (label: string, val: number) => `<div class="row space-between"><span class="muted">${label}</span><b>${val}</b></div>`;
+  const overlay = div('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal card col">
+      <div class="row space-between">
+        <h2>${escapeHtml(cardName(id))}</h2>
+        <button id="x" class="secondary" style="padding:4px 10px">✕</button>
+      </div>
+      <div class="row" style="gap:8px">
+        <span class="badge" style="background:${hex(RARITY_COLOR[c.rarity])}">${rarityText(c.rarity)}</span>
+        <span class="badge" style="background:#455a64;color:#fff">${roleText(c.role)}</span>
+        <span class="badge">💧 ${c.cost}</span>
+        <span class="badge">${t('col.level', { n: cs.level })}</span>
+      </div>
+      <div class="col" style="gap:4px">
+        ${c.type === 'spell'
+          ? statLine(t('card.spellDmg'), stats.spellDamage)
+          : statLine(t('card.hp'), stats.hp) + statLine(t('card.dmg'), stats.damage) + statLine(t('card.dps'), dps)}
+      </div>
+      <div class="muted">${maxed ? t('col.maxLevel') : t('col.cards', { have: cs.count, need }) + ' · ' + t('col.gold', { n: goldCost })}</div>
+      <div class="error" id="cerr"></div>
+      <button id="up" class="accent" ${canUp ? '' : 'disabled'}>${maxed ? t('col.maxLevel') : t('col.upgrade')}</button>
+    </div>`;
+  document.getElementById('ui')!.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector<HTMLButtonElement>('#x')!.onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  const up = overlay.querySelector<HTMLButtonElement>('#up')!;
+  if (canUp) {
+    up.onclick = async () => {
+      up.disabled = true;
+      try {
+        state.profile = (await api.upgradeCard(id)).profile;
+        haptic('success');
+        close();
+        void renderCollection(nav); // refresh the grid
+      } catch (err) {
+        overlay.querySelector<HTMLDivElement>('#cerr')!.textContent = (err as Error).message;
+        up.disabled = false;
+        haptic('error');
+      }
+    };
+  }
 }
 
 // --- Clans ---

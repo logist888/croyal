@@ -5,8 +5,10 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
-  DEFAULT_DECK, MAX_CLAN_MEMBERS, validateNickname, validateClanName,
-  type PlayerProfile, type Clan, type ClanMember, type Language,
+  DEFAULT_DECK, MAX_CLAN_MEMBERS, ALL_CARD_IDS, MAX_CARD_LEVEL,
+  cardsToUpgrade, goldToUpgrade, xpForUpgrade,
+  validateNickname, validateClanName,
+  type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
 } from '@croyal/shared';
 
 export interface CreateUserInput {
@@ -39,6 +41,8 @@ export class Store {
       throw new Error('User already registered');
     }
     const id = randomUUID();
+    const cards: Record<string, CardState> = {};
+    for (const cardId of ALL_CARD_IDS) cards[cardId] = { level: 1, count: 0 };
     const profile: PlayerProfile = {
       id,
       telegramId: input.telegramId,
@@ -49,7 +53,9 @@ export class Store {
       losses: 0,
       gold: 100,
       gems: 0,
+      xp: 0,
       deck: [...DEFAULT_DECK],
+      cards,
       clanId: null,
       createdAt: Date.now(),
     };
@@ -70,6 +76,34 @@ export class Store {
     }
     Object.assign(user, patch, { nickname: user.nickname, id: user.id, telegramId: user.telegramId });
     return user;
+  }
+
+  /** Upgrade one card a level: spends duplicate cards + gold, grants account XP. */
+  upgradeCard(userId: string, cardId: string): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const cs = user.cards[cardId];
+    if (!cs) throw new Error('Card not owned');
+    if (cs.level >= MAX_CARD_LEVEL) throw new Error('Card is already at max level');
+    const needCards = cardsToUpgrade(cs.level);
+    const needGold = goldToUpgrade(cs.level);
+    if (cs.count < needCards) throw new Error('Not enough cards');
+    if (user.gold < needGold) throw new Error('Not enough gold');
+    cs.count -= needCards;
+    user.gold -= needGold;
+    cs.level += 1;
+    user.xp += xpForUpgrade(cs.level);
+    return user;
+  }
+
+  /** Add duplicate cards to a user's inventory (rewards). Ignores unknown ids. */
+  awardCards(userId: string, drops: Record<string, number>): void {
+    const user = this.users.get(userId);
+    if (!user) return;
+    for (const [cardId, n] of Object.entries(drops)) {
+      const cs = user.cards[cardId];
+      if (cs) cs.count += n;
+    }
   }
 
   // --- Sessions ---

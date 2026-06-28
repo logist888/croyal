@@ -107,3 +107,34 @@ export function averageElixir(deck: string[]): number {
   const sum = costs.reduce((a, b) => a + b, 0);
   return deck.length ? Math.round((sum / deck.length) * 10) / 10 : 0;
 }
+
+// --- Card progression (levels & upgrades) ---
+export const MAX_CARD_LEVEL = 6;
+const UPGRADE_CARDS = [0, 2, 4, 10, 20, 50]; // duplicate cards to go from index-level -> +1
+const UPGRADE_GOLD = [0, 5, 20, 50, 150, 400]; // gold cost for the same step
+
+/** Duplicate cards required to upgrade FROM the given level. Infinity at max. */
+export function cardsToUpgrade(level: number): number {
+  return UPGRADE_CARDS[level] ?? Infinity;
+}
+/** Gold required to upgrade FROM the given level. Infinity at max. */
+export function goldToUpgrade(level: number): number {
+  return UPGRADE_GOLD[level] ?? Infinity;
+}
+/** Account XP granted when a card reaches `newLevel`. */
+export function xpForUpgrade(newLevel: number): number {
+  return newLevel * 2;
+}
+/** Stat multiplier at a card level (+10% per level over 1). */
+export function levelStatMultiplier(level: number): number {
+  return Math.round(Math.pow(1.1, Math.max(1, level) - 1) * 1000) / 1000;
+}
+/** Level-scaled core stats for display/simulation. */
+export function scaledStats(card: CardDef, level: number): { hp: number; damage: number; spellDamage: number } {
+  const m = levelStatMultiplier(level);
+  return {
+    hp: Math.round((card.hp ?? 0) * m),
+    damage: Math.round((card.damage ?? 0) * m),
+    spellDamage: Math.round((card.spellDamage ?? 0) * m),
+  };
+}

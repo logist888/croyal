@@ -85,6 +85,16 @@ export function createApp() {
     res.json({ profile: user ? publicProfile(user) : null });
   });
 
+  // --- Cards: upgrade ---
+  app.post('/api/cards/:id/upgrade', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.upgradeCard(req.userId!, req.params.id);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
   // --- Clans ---
   app.get('/api/clans', requireAuth, (_req: AuthedRequest, res: Response) => {
     res.json({ clans: store.listClans().map(clanSummary) });

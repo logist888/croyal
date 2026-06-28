@@ -30,6 +30,7 @@ export const api = {
   register: (body: { initData?: string; devUser?: { id: number }; nickname: string; language: string }) =>
     req<{ token: string; profile: PlayerProfile }>('/api/register', { method: 'POST', body: JSON.stringify(body) }),
   me: () => req<{ profile: PlayerProfile }>('/api/me'),
+  upgradeCard: (id: string) => req<{ profile: PlayerProfile }>(`/api/cards/${id}/upgrade`, { method: 'POST' }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

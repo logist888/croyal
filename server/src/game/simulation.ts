@@ -7,7 +7,7 @@ import {
   ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
   ROUND_SECONDS, DOUBLE_ELIXIR_LAST_SECONDS,
   KING_TOWER, PRINCESS_TOWER, TOWER_POSITIONS, otherSide,
-  CARDS, getCard,
+  CARDS, getCard, levelStatMultiplier,
   type Side, type TowerType, type CardDef, type TargetKind,
   type BattleSnapshot, type EntitySnapshot, type MatchResult,
 } from '@croyal/shared';
@@ -67,14 +67,23 @@ export class Simulation {
   private towerDamage: Record<Side, number> = { A: 0, B: 0 };
   private firstTowerTick: Record<Side, number | null> = { A: null, B: null };
 
+  private levels: Record<Side, Record<string, number>>;
+
   constructor(
     deckA: string[],
     deckB: string[],
     private fallbackSeed: number,
+    levelsA: Record<string, number> = {},
+    levelsB: Record<string, number> = {},
   ) {
     this.queue = { A: shuffle(deckA, fallbackSeed), B: shuffle(deckB, fallbackSeed + 1) };
+    this.levels = { A: levelsA, B: levelsB };
     this.spawnTowers('A');
     this.spawnTowers('B');
+  }
+
+  private cardLevel(side: Side, cardId: string): number {
+    return this.levels[side][cardId] ?? 1;
   }
 
   private nextId(side: Side): string {
@@ -186,6 +195,9 @@ export class Simulation {
 
   private spawnCard(side: Side, card: CardDef, x: number, y: number): void {
     const count = card.count ?? 1;
+    const m = levelStatMultiplier(this.cardLevel(side, card.id));
+    const hp = Math.round((card.hp ?? 100) * m);
+    const damage = Math.round((card.damage ?? 0) * m);
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
       const ox = count > 1 ? Math.cos(angle) * 0.6 : 0;
@@ -198,9 +210,9 @@ export class Simulation {
         cardId: card.id,
         x: clamp(x + ox, 0.5, ARENA_WIDTH - 0.5),
         y: clamp(y + oy, 0.5, ARENA_HEIGHT - 0.5),
-        hp: card.hp ?? 100,
-        maxHp: card.hp ?? 100,
-        damage: card.damage ?? 0,
+        hp,
+        maxHp: hp,
+        damage,
         hitSpeed: card.hitSpeed ?? 1,
         range: card.range ?? 1.2,
         moveSpeed: card.moveSpeed ?? 0,
@@ -219,7 +231,7 @@ export class Simulation {
 
   private castSpell(side: Side, card: CardDef, x: number, y: number): void {
     const radius = card.spellRadius ?? 1;
-    const dmg = card.spellDamage ?? 0;
+    const dmg = Math.round((card.spellDamage ?? 0) * levelStatMultiplier(this.cardLevel(side, card.id)));
     const enemy = otherSide(side);
     for (const e of this.entities.values()) {
       if (e.side !== enemy || e.hp <= 0) continue;
