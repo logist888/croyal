@@ -29,10 +29,9 @@ if command -v rsync >/dev/null 2>&1; then
     --exclude='dist' \
     ./ backups/current/
 else
-  # Fallback without rsync
-  for entry in $(ls -A | grep -vE '^(\.git|node_modules|backups|dist)$'); do
-    cp -r "$entry" backups/current/
-  done
+  # Fallback without rsync — tar handles spaces in filenames and the excludes safely.
+  tar --exclude='./.git' --exclude='./node_modules' --exclude='./backups' --exclude='./dist' \
+    -cf - . | tar -xf - -C backups/current
 fi
 
 # --- 2. Git backup: commit + tag ---
