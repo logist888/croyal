@@ -34,11 +34,12 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
       <div class="elixir-bar" style="height:16px"><div class="elixir-fill" id="boss-hp" style="background:linear-gradient(180deg,#b388ff,#7e57c2)"></div></div>
       <div class="muted" id="bosshp-label" style="margin-top:2px">Boss</div>
     </div>
+    <div id="arena" class="arena-host"></div>
     ${elixirBarHtml()}
     <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>
     <div class="card"><div class="muted">${t('boss.raiders')}</div><div id="parts"></div></div>`;
   setUI(root);
-  setGameVisible(true);
+  setGameVisible(false);
 
   root.querySelector<HTMLButtonElement>('#leave')!.onclick = () => {
     socket.send({ t: 'bossLeave' });
@@ -49,7 +50,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   hand = buildHand(root.querySelector<HTMLDivElement>('#hand')!, () => {});
 
   const { w, h } = computeFieldSize();
-  field = new GameField('game', w, h, (tap) => {
+  field = new GameField('arena', w, h, (tap) => {
     const id = hand?.selected();
     if (!id) return;
     socket.send({ t: 'bossDeploy', cardId: id, x: tap.x, y: tap.y });

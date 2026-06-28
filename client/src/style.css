@@ -40,8 +40,9 @@ html, body {
   margin: 0 auto;
   min-height: 100vh;
 }
-#game { display: flex; justify-content: center; }
-#game canvas {
+#game, .arena-host { display: flex; justify-content: center; }
+.arena-host { margin: 6px 0; }
+#game canvas, .arena-host canvas {
   display: block;
   border-radius: 14px;
   box-shadow: 0 6px 0 rgba(0,0,0,0.35), 0 0 0 3px var(--wood-2), 0 0 0 5px var(--gold-edge);

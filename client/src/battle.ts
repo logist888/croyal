@@ -47,10 +47,11 @@ export async function startBattle(nav: Nav): Promise<void> {
         <span id="score" class="chip score">0 — 0</span>
         <span id="timer" class="chip timer">4:00</span>
       </div>
+      <div id="arena" class="arena-host"></div>
       ${elixirBarHtml()}
       <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`;
     setUI(root);
-    setGameVisible(true);
+    setGameVisible(false);
     root.querySelector<HTMLButtonElement>('#leave')!.onclick = () => {
       socket.send({ t: 'leaveMatch' });
     };
@@ -135,7 +136,7 @@ export async function startBattle(nav: Nav): Promise<void> {
       inMatch = true;
       const { w, h } = computeFieldSize();
       root = buildBattleUI();
-      field = new GameField('game', w, h, (tap) => {
+      field = new GameField('arena', w, h, (tap) => {
         const id = hand?.selected();
         if (!id) return;
         socket.send({ t: 'deploy', cardId: id, x: tap.x, y: tap.y });

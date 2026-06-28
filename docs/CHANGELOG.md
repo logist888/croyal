@@ -3,6 +3,14 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## fix — battle layout & deploy (browser)
+- The arena canvas was in a separate `#game` div rendered **below** the HUD, so the
+  card hand appeared above the arena and the field sat below the fold (hard to tap).
+- Now the Phaser canvas mounts **inside** the battle/boss HUD in the correct order:
+  top bar → **arena** → elixir → hand (cards at the bottom, like the original), which
+  also makes the field directly tappable to deploy. Your side still renders at the
+  bottom of the arena.
+
 ## build-9 — Battle chests & reward reveal (Phase 2)
 - Match results now carry **battle-chest rewards** (`MatchResult.rewards` = gold +
   duplicate cards); the match controller computes and attaches them per player.
