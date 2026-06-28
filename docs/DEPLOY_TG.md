@@ -56,6 +56,32 @@ public Mini App URL. (No-install fallback for a quick *browser* test:
 
 A `Dockerfile` is also included if you prefer a Docker host (Railway, Fly.io, a VPS…).
 
+## Path C — GitHub Pages (client) + Render (server)  ← permanent, no tunnel
+GitHub Pages can host **only static files**, so it serves the **client**; the
+**server** (API + WebSocket) still needs a Node host. Split:
+
+**C1. Backend on Render** (as in Path B) → note its URL, e.g.
+`https://tower-clash-xxxx.onrender.com`. (CORS is open, so the Pages origin can call it.)
+
+**C2. Tell the client where the backend is**
+- GitHub repo → **Settings → Secrets and variables → Actions → Variables → New
+  repository variable**: `VITE_API_BASE` = your Render URL.
+
+**C3. Enable Pages**
+- **Settings → Pages → Source = GitHub Actions.**
+
+**C4. Build & deploy** (workflow `.github/workflows/pages.yml`)
+- It runs on push (or **Actions tab → Deploy client to GitHub Pages → Run workflow**).
+  It builds with `VITE_BASE=/croyal/` and your `VITE_API_BASE`, then publishes.
+- Result URL: **`https://logist888.github.io/croyal/`** — that's your Mini App URL.
+
+> Set `VITE_API_BASE` *before* the build (else the client has no backend). If the
+> first auto-run happened without it, just re-run the workflow after adding it.
+> Render free tier sleeps when idle; the first battle after idle waits ~30 s while
+> it wakes.
+
+Then use that Pages URL in BotFather (next step).
+
 ## 2. Point the bot at your URL (@BotFather)
 Either set it as the **Menu Button** (simplest) or a named Mini App:
 - `/mybots` → pick your bot → **Bot Settings → Menu Button → Edit menu button URL**

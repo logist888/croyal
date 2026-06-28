@@ -11,7 +11,7 @@ import { api } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
-import { cardImageUrl } from './assets';
+import { cardImageUrl, asset } from './assets';
 
 export interface Nav {
   toMenu(): void;
@@ -54,8 +54,10 @@ export function hex(color: number): string {
  * otherwise falls back to the bundled placeholder crest /logo.svg.
  */
 export function logoHtml(small = false): string {
-  return `<img class="logo${small ? ' logo-sm' : ''}" src="/logo.png" alt="Tower Clash"
-    onerror="this.onerror=null;this.src='/logo.svg'">`;
+  const png = asset('logo.png');
+  const svg = asset('logo.svg');
+  return `<img class="logo${small ? ' logo-sm' : ''}" src="${png}" alt="Tower Clash"
+    onerror="this.onerror=null;this.src='${svg}'">`;
 }
 
 // --- Registration (nickname is permanent!) ---
@@ -161,7 +163,7 @@ export function renderMenu(nav: Nav): void {
   node.innerHTML = `
     <div class="topbar">
       <div class="player">
-        <img class="avatar" src="/logo.png" alt="" onerror="this.onerror=null;this.src='/logo.svg'">
+        <img class="avatar" src="${asset('logo.png')}" alt="" onerror="this.onerror=null;this.src='${asset('logo.svg')}'">
         <div class="pinfo">
           <div class="pname">${escapeHtml(p.nickname)}</div>
           <div class="plvl">${t('menu.level', { n: lvl })}</div>

@@ -1,0 +1,52 @@
+name: Deploy client to GitHub Pages
+
+# Builds the Vite client and publishes it to GitHub Pages.
+# The backend (API + WebSocket) must run elsewhere (e.g. Render); set its URL in
+# repo Variables as VITE_API_BASE (Settings → Secrets and variables → Actions →
+# Variables). Enable Pages with Source = "GitHub Actions".
+
+on:
+  push:
+    branches:
+      - claude/clash-royale-telegram-app-cln5rb
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Build client
+        run: npm run build --workspace client
+        env:
+          # Repo name -> project Pages is served from /croyal/
+          VITE_BASE: /croyal/
+          # Public URL of the backend (Render). Set as an Actions *Variable*.
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

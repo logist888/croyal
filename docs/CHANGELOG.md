@@ -3,6 +3,16 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-11 — GitHub Pages deploy (client) + base-path support
+- Client is now **base-path-aware**: Vite `base` from `VITE_BASE`, and all runtime
+  asset URLs (manifest, card/unit/tower/boss/arena art, logo, menu bg) resolve via
+  `import.meta.env.BASE_URL`. Works at `/` (dev/Render) and `/croyal/` (Pages).
+- Added **`.github/workflows/pages.yml`**: builds the client (`VITE_BASE=/croyal/`,
+  `VITE_API_BASE` from a repo Variable) and publishes to GitHub Pages.
+- `docs/DEPLOY_TG.md` Path C: GitHub Pages (client) + Render (server) — permanent,
+  no tunnel. (Pages is static-only, so the server still needs a Node host.)
+- Verified: Pages build emits `/croyal/...` asset paths; root build unchanged.
+
 ## build-10 — Telegram-ready single-origin hosting
 - Server now serves the **built client + API + WebSocket from one origin**
   (`server` serves `client/dist`, SPA fallback for non-`/api` GETs). One HTTPS URL

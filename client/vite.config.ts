@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 
+// `base` controls the public path the app is served from:
+//   - '/'         local dev & single-origin server (Render)
+//   - '/croyal/'  GitHub Pages project site (set VITE_BASE in the Pages workflow)
 export default defineConfig({
+  base: process.env.VITE_BASE || '/',
   server: {
     port: 5173,
     host: true,
