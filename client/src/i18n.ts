@@ -69,6 +69,9 @@ const EN: Dict = {
   'battle.reason': 'Result: {reason}',
   'battle.trophies': 'Trophies: {delta}',
   'battle.backToMenu': 'Back to menu',
+  'result.chest': 'Battle chest',
+  'result.open': 'Open',
+  'result.received': 'Received:',
 
   'reason.king': 'enemy king destroyed',
   'reason.tiebreak': 'won on tiebreak',
@@ -179,6 +182,9 @@ const RU: Dict = {
   'battle.reason': 'Итог: {reason}',
   'battle.trophies': 'Кубки: {delta}',
   'battle.backToMenu': 'В меню',
+  'result.chest': 'Боевой сундук',
+  'result.open': 'Открыть',
+  'result.received': 'Получено:',
 
   'reason.king': 'снесена башня короля',
   'reason.tiebreak': 'победа по очкам',

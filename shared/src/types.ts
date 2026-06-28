@@ -75,12 +75,18 @@ export interface BattleSnapshot {
 
 export type MatchOutcome = 'win' | 'loss';
 
+export interface BattleRewards {
+  gold: number;
+  cards: Record<string, number>; // cardId -> count gained
+}
+
 export interface MatchResult {
   outcome: MatchOutcome; // from the receiving player's perspective
   reason: 'king' | 'tiebreak' | 'timeout' | 'opponent_left';
   yourScore: number;
   opponentScore: number;
   trophyDelta: number;
+  rewards: BattleRewards; // battle chest contents
 }
 
 // --- Boss raid snapshot ---

@@ -1,13 +1,14 @@
 /**
  * 1v1 battle controller: matchmaking, Phaser field, HUD and deploy input.
  */
-import type { BattleSnapshot, MatchResult, ServerMessage } from '@croyal/shared';
+import { getCard, type BattleSnapshot, type MatchResult, type ServerMessage } from '@croyal/shared';
 import { socket } from './net';
-import { setUI, setGameVisible, type Nav } from './ui';
+import { setUI, setGameVisible, hex, type Nav } from './ui';
 import { GameField } from './field';
 import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, nextCardHtml, setNextCard, type HandUI } from './hud';
 import { haptic } from './telegram';
 import { t, reasonText } from './i18n';
+import { cardImageUrl } from './assets';
 
 export async function startBattle(nav: Nav): Promise<void> {
   let field: GameField | null = null;
@@ -88,9 +89,37 @@ export async function startBattle(nav: Nav): Promise<void> {
         <div class="muted">${t('battle.reason', { reason: reasonText(result.reason) })}</div>
         <div>${t('battle.trophies', { delta: (result.trophyDelta >= 0 ? '+' : '') + result.trophyDelta })}</div>
       </div>
-      <button id="ok" class="accent">${t('battle.backToMenu')}</button>`;
+      <div class="card col" id="chest" style="align-items:center">
+        <div class="muted">${t('result.chest')}</div>
+        <div style="font-size:54px">🎁</div>
+        <button id="open" class="accent">${t('result.open')}</button>
+      </div>
+      <button id="ok" class="accent" style="display:none">${t('battle.backToMenu')}</button>`;
     setUI(node);
-    node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toMenu();
+
+    const rewardTile = (id: string, n: number) => {
+      const c = getCard(id);
+      const art = cardImageUrl(id);
+      const bg = art
+        ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center`
+        : `background:${c ? hex(c.color) : '#555'}`;
+      return `<div class="reward"><div class="reward-card" style="${bg}"></div><b>x${n}</b></div>`;
+    };
+
+    const ok = node.querySelector<HTMLButtonElement>('#ok')!;
+    ok.onclick = () => nav.toMenu();
+    node.querySelector<HTMLButtonElement>('#open')!.onclick = () => {
+      haptic('success');
+      const chest = node.querySelector<HTMLDivElement>('#chest')!;
+      const cards = Object.entries(result.rewards.cards);
+      chest.innerHTML = `
+        <div class="muted">${t('result.received')}</div>
+        <div class="reward-row">
+          <div class="reward"><div class="reward-card" style="display:flex;align-items:center;justify-content:center;font-size:22px">🪙</div><b>+${result.rewards.gold}</b></div>
+          ${cards.map(([id, n]) => rewardTile(id, n)).join('')}
+        </div>`;
+      ok.style.display = '';
+    };
   }
 
   try {

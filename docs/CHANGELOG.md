@@ -3,6 +3,13 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-9 — Battle chests & reward reveal (Phase 2)
+- Match results now carry **battle-chest rewards** (`MatchResult.rewards` = gold +
+  duplicate cards); the match controller computes and attaches them per player.
+- Result screen shows a **chest you tap to open** → reveals `+gold` and each card
+  drop (with its art), then "Back to menu".
+- 28 tests + typecheck + build all green.
+
 ## build-8 — Card collection, levels & upgrades (Phase 1)
 - **Per-user card inventory** (level + duplicate count) seeded for all cards at
   registration; profile now carries `xp` and `cards`.

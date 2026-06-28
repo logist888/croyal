@@ -76,8 +76,11 @@ Card collection + levels + upgrades: per-user inventory, gold+duplicate upgrades
 account XP→King level, level stat scaling in the sim, Collection screen + card
 detail modal, battle card drops.
 
+## Phase 2 — DONE (build-9)
+Battle chests: results carry rewards (gold + cards); result screen shows a chest
+to open that reveals the loot with card art.
+
 ## Planned next phases (in order)
-2. **Chests & reward reveal** after wins (gold + card drops shown as a chest open).
 3. **Onboarding** (consent/age screens) + a scripted tutorial battle.
 4. **Battle HUD polish**: tower level badges, emotes, "Max 10" label, camera zoom.
 

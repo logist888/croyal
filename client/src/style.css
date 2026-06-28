@@ -286,6 +286,12 @@ input[type="text"]::placeholder { color: #9b8763; }
 .col-fill { height: 100%; background: linear-gradient(90deg, #42a5f5, #1565c0); }
 .col-count { font-size: 10px; text-align: center; }
 
+/* ===== Battle reward / chest reveal ===== */
+.reward-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.reward { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.reward-card { width: 52px; height: 68px; border-radius: 8px; border: 2px solid var(--gold-1); background: #3a2a18; }
+.reward b { color: var(--gold-1); }
+
 /* ===== Modal ===== */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.62);

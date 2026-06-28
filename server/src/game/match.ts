@@ -4,7 +4,7 @@
  */
 import {
   TICK_DT, SNAPSHOT_RATE, TICK_RATE, ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y,
-  getCard, otherSide, type Side, type ServerMessage, type MatchResult,
+  getCard, otherSide, type Side, type ServerMessage, type MatchResult, type BattleRewards,
 } from '@croyal/shared';
 import { Simulation } from './simulation';
 import type { Store } from '../store';
@@ -144,23 +144,25 @@ export class Match {
       if (!seat.userId) continue;
       const isWinner = side === winner;
       const delta = isWinner ? WIN_TROPHIES : -LOSS_TROPHIES;
-      this.persist(seat.userId, isWinner, delta);
+      const rewards = this.persist(seat.userId, isWinner, delta);
       const result: MatchResult = {
         outcome: isWinner ? 'win' : 'loss',
         reason,
         yourScore: side === winner ? scoreWinner : scoreLoser,
         opponentScore: side === winner ? scoreLoser : scoreWinner,
         trophyDelta: delta,
+        rewards,
       };
       seat.send({ t: 'matchEnd', result });
     }
   }
 
-  private persist(userId: string, isWinner: boolean, delta: number): void {
+  private persist(userId: string, isWinner: boolean, delta: number): BattleRewards {
     const user = this.store.getUser(userId);
-    if (!user) return;
-    // Card drops (a simple per-battle source until chests exist): spread +1 across
-    // the player's deck, more for the winner. Deterministic rotation by games played.
+    if (!user) return { gold: 0, cards: {} };
+    // Battle-chest contents: gold + duplicate cards spread across the deck (winner
+    // more). Deterministic rotation by games played.
+    const goldGain = isWinner ? 50 : 10;
     const n = isWinner ? 3 : 1;
     const start = (user.wins + user.losses) % Math.max(1, user.deck.length);
     const drops: Record<string, number> = {};
@@ -172,9 +174,10 @@ export class Match {
       trophies: Math.max(0, user.trophies + delta),
       wins: user.wins + (isWinner ? 1 : 0),
       losses: user.losses + (isWinner ? 0 : 1),
-      gold: user.gold + (isWinner ? 50 : 10),
+      gold: user.gold + goldGain,
     });
     this.store.awardCards(userId, drops);
+    return { gold: goldGain, cards: drops };
   }
 }
 
