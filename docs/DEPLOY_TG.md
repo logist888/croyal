@@ -29,12 +29,17 @@ npm install
 # 1) build the client and start the single-origin server (serves everything on :3001)
 ALLOW_DEV_AUTH=1 npm start          # = build client + run server
 
-# 2) in a SECOND terminal, expose :3001 over HTTPS (no account needed)
-brew install cloudflared            # macOS (once)
-cloudflared tunnel --url http://localhost:3001
+# 2) in a SECOND terminal, expose :3001 over HTTPS (no account, no Homebrew needed)
+cd ~/croyal
+ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo amd64)
+curl -L -o cloudflared.tgz "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-$ARCH.tgz"
+tar -xzf cloudflared.tgz && chmod +x cloudflared
+xattr -d com.apple.quarantine ./cloudflared 2>/dev/null || true   # skip macOS Gatekeeper
+./cloudflared tunnel --url http://localhost:3001
 ```
 Cloudflared prints a URL like `https://something.trycloudflare.com`. That's your
-public Mini App URL. (Alternatives: `npx localtunnel --port 3001`, or `ngrok http 3001`.)
+public Mini App URL. (No-install fallback for a quick *browser* test:
+`npx localtunnel --port 3001` — but cloudflared is better for Telegram.)
 
 > The tunnel URL changes each run, and the server's data is in memory (resets on
 > restart) — fine for testing.
