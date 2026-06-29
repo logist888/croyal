@@ -1,5 +1,12 @@
 # Data Model & Persistence
 
+> **Implemented (build-12):** PostgreSQL durability via **write-through**
+> (`server/src/db.ts`). The in-memory store is the synchronous runtime source of
+> truth; every mutation mirrors to Postgres and the store hydrates from it on boot.
+> Enable with `DATABASE_URL`; unset = pure in-memory. Tables `users`/`clans`/
+> `sessions` with deck/cards/members as JSONB (Redis remains a future scale step).
+
+
 ## Current: in-memory store
 The MVP ships with an **in-memory** `Store` (`server/src/store.ts`) so it runs with
 zero external services. It holds users, sessions (token → user), and clans in `Map`s

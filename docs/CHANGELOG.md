@@ -3,6 +3,19 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-12 — Durable storage: PostgreSQL write-through
+- Added `server/src/db.ts` (node-`pg`): the in-memory store stays the synchronous
+  runtime source of truth, but every change **writes through to PostgreSQL** and the
+  store **hydrates from it on boot** → progress (accounts, cards, clans, sessions)
+  **survives restarts/sleep**, on any host.
+- Enabled via **`DATABASE_URL`** (Neon/Supabase/Render PG; SSL auto for non-local).
+  Unset → pure in-memory (unchanged dev/test behavior). `store.init()` runs at boot.
+- Tables `users`/`clans`/`sessions` (deck/cards/members as JSONB).
+- `render.yaml` + `.env.example` + `docs/DEPLOY_TG.md` updated (Neon step).
+- **Verified against a real Postgres 16:** registered a user + clan, restarted the
+  server, and the same token returned the profile (10-card inventory) and clan —
+  data hydrated from PG. 28 tests + typecheck + build still green.
+
 ## build-11 — GitHub Pages deploy (client) + base-path support
 - Client is now **base-path-aware**: Vite `base` from `VITE_BASE`, and all runtime
   asset URLs (manifest, card/unit/tower/boss/arena art, logo, menu bg) resolve via

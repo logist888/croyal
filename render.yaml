@@ -12,5 +12,9 @@ services:
       # For a real launch, remove this and set BOT_TOKEN instead.
       - key: ALLOW_DEV_AUTH
         value: "1"
+      # Durable storage so progress survives restarts/sleep. Paste your Neon/Supabase
+      # connection string in the Render dashboard (Environment).
+      - key: DATABASE_URL
+        sync: false
       # - key: BOT_TOKEN
       #   sync: false   # set your @BotFather token in the dashboard for verified auth

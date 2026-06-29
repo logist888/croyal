@@ -82,6 +82,19 @@ GitHub Pages can host **only static files**, so it serves the **client**; the
 
 Then use that Pages URL in BotFather (next step).
 
+## Persistent progress (Postgres) — recommended
+Without a database the server keeps everything **in memory** → progress resets on
+restart/sleep. Add a free Postgres and it survives (the server write-throughs to it
+and reloads on boot). This is **independent of the host** and of cold starts.
+1. **neon.tech** (or supabase.com) → sign up free → create a project/database →
+   copy the **connection string** (`postgres://…?sslmode=require`).
+2. Set it as **`DATABASE_URL`** on your server host:
+   - Render: service → **Environment → Add `DATABASE_URL`** = the string.
+   - Fly: `fly secrets set DATABASE_URL="postgres://…"`.
+3. Redeploy/restart. The log should print `[store] Postgres connected …`. Done —
+   accounts, cards, clans now persist. (Leave `DATABASE_URL` unset for a throwaway
+   in-memory run.)
+
 ## 2. Point the bot at your URL (@BotFather)
 Either set it as the **Menu Button** (simplest) or a named Mini App:
 - `/mybots` → pick your bot → **Bot Settings → Menu Button → Edit menu button URL**

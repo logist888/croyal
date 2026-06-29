@@ -1,7 +1,7 @@
 /**
- * In-memory data store. This is the default persistence layer so the MVP runs
- * with zero external dependencies. The interface is intentionally narrow so it
- * can be backed by PostgreSQL + Redis in production (see docs/DATABASE.md).
+ * In-memory data store, mirrored write-through to PostgreSQL when DATABASE_URL is
+ * set (see db.ts / docs/DATABASE.md). The in-memory maps stay the synchronous
+ * runtime source of truth; the DB provides durability across restarts.
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -10,6 +10,7 @@ import {
   validateNickname, validateClanName,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
 } from '@croyal/shared';
+import { Db } from './db';
 
 export interface CreateUserInput {
   telegramId: number;
@@ -22,6 +23,26 @@ export class Store {
   private byTelegram = new Map<number, string>();
   private sessions = new Map<string, string>(); // token -> userId
   private clans = new Map<string, Clan>();
+  private db: Db | null = null;
+
+  /** Connect to Postgres (if DATABASE_URL is set) and hydrate from it. */
+  async init(): Promise<void> {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      console.log('[store] no DATABASE_URL — running in-memory only (data resets on restart).');
+      return;
+    }
+    this.db = new Db(url);
+    await this.db.init();
+    const data = await this.db.loadAll();
+    for (const u of data.users) {
+      this.users.set(u.id, u);
+      this.byTelegram.set(u.telegramId, u.id);
+    }
+    for (const c of data.clans) this.clans.set(c.id, c);
+    for (const [token, userId] of data.sessions) this.sessions.set(token, userId);
+    console.log(`[store] Postgres connected — loaded ${data.users.length} users, ${data.clans.length} clans.`);
+  }
 
   // --- Users ---
   getUser(id: string): PlayerProfile | undefined {
@@ -61,6 +82,7 @@ export class Store {
     };
     this.users.set(id, profile);
     this.byTelegram.set(input.telegramId, id);
+    this.db?.upsertUser(profile);
     return profile;
   }
 
@@ -75,6 +97,7 @@ export class Store {
       throw new Error('Nickname is immutable and cannot be changed');
     }
     Object.assign(user, patch, { nickname: user.nickname, id: user.id, telegramId: user.telegramId });
+    this.db?.upsertUser(user);
     return user;
   }
 
@@ -93,6 +116,7 @@ export class Store {
     user.gold -= needGold;
     cs.level += 1;
     user.xp += xpForUpgrade(cs.level);
+    this.db?.upsertUser(user);
     return user;
   }
 
@@ -104,12 +128,14 @@ export class Store {
       const cs = user.cards[cardId];
       if (cs) cs.count += n;
     }
+    this.db?.upsertUser(user);
   }
 
   // --- Sessions ---
   createSession(userId: string): string {
     const token = randomUUID();
     this.sessions.set(token, userId);
+    this.db?.upsertSession(token, userId);
     return token;
   }
 
@@ -145,6 +171,8 @@ export class Store {
     const clan: Clan = { id, name: name.trim(), leaderId, createdAt: Date.now(), members: [member] };
     this.clans.set(id, clan);
     leader.clanId = id;
+    this.db?.upsertClan(clan);
+    this.db?.upsertUser(leader);
     return clan;
   }
 
@@ -165,6 +193,8 @@ export class Store {
       joinedAt: Date.now(),
     });
     user.clanId = clan.id;
+    this.db?.upsertClan(clan);
+    this.db?.upsertUser(user);
     return clan;
   }
 
@@ -173,10 +203,12 @@ export class Store {
     if (!user || !user.clanId) throw new Error('You are not in a clan');
     const clan = this.clans.get(user.clanId);
     user.clanId = null;
+    this.db?.upsertUser(user);
     if (!clan) return;
     clan.members = clan.members.filter((m) => m.userId !== userId);
     if (clan.members.length === 0) {
       this.clans.delete(clan.id);
+      this.db?.deleteClan(clan.id);
       return;
     }
     if (clan.leaderId === userId) {
@@ -185,6 +217,7 @@ export class Store {
       next.role = 'leader';
       clan.leaderId = next.userId;
     }
+    this.db?.upsertClan(clan);
   }
 
   kickMember(leaderId: string, targetUserId: string): Clan {
@@ -196,7 +229,11 @@ export class Store {
     if (targetUserId === leaderId) throw new Error('The leader cannot kick themselves (use leave/disband)');
     const target = this.users.get(targetUserId);
     clan.members = clan.members.filter((m) => m.userId !== targetUserId);
-    if (target) target.clanId = null;
+    if (target) {
+      target.clanId = null;
+      this.db?.upsertUser(target);
+    }
+    this.db?.upsertClan(clan);
     return clan;
   }
 }
