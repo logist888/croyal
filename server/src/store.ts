@@ -44,6 +44,11 @@ export class Store {
     console.log(`[store] Postgres connected — loaded ${data.users.length} users, ${data.clans.length} clans.`);
   }
 
+  /** True once Postgres is connected (DATABASE_URL set) — surfaced via /api/health. */
+  get persistent(): boolean {
+    return this.db !== null;
+  }
+
   // --- Users ---
   getUser(id: string): PlayerProfile | undefined {
     return this.users.get(id);

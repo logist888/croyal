@@ -41,7 +41,8 @@ export function createApp() {
   app.use(cors());
   app.use(express.json());
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  app.get('/api/health', (_req, res) =>
+    res.json({ ok: true, persistence: store.persistent ? 'postgres' : 'memory' }));
 
   // --- Auth: identify the Telegram user; tell the client whether to register ---
   app.post('/api/auth', (req: Request, res: Response) => {
