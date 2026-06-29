@@ -38,6 +38,7 @@ class FieldScene extends Phaser.Scene {
   private bg!: Phaser.GameObjects.Graphics;
   private gfx!: Phaser.GameObjects.Graphics;
   private sprites = new Map<string, Phaser.GameObjects.Image>();
+  private labels = new Map<string, Phaser.GameObjects.Text>();
   private entities: EntitySnapshot[] = [];
   private flip = false;
   private w = 0;
@@ -45,6 +46,7 @@ class FieldScene extends Phaser.Scene {
   private onTap: (t: FieldTap) => void = () => {};
   private loadList: { key: string; url: string }[] = [];
   private arenaUrl?: string;
+  private marker: { x: number; y: number; valid: boolean } | null = null;
 
   constructor() { super('field'); }
 
@@ -77,6 +79,15 @@ class FieldScene extends Phaser.Scene {
   setData2(entities: EntitySnapshot[], flip: boolean) {
     this.entities = entities;
     this.flip = flip;
+  }
+
+  setMarker(m: { x: number; y: number; valid: boolean } | null) {
+    this.marker = m;
+  }
+
+  /** Convert canvas pixel coords to tile coords (flip-aware). Public for drag. */
+  pxToTile(px: number, py: number): FieldTap {
+    return this.toTile(px, py);
   }
 
   private sx() { return this.w / ARENA_WIDTH; }
@@ -137,16 +148,30 @@ class FieldScene extends Phaser.Scene {
         const box = boxTiles(e) * sx;
         const scale = box / Math.max(img.width, img.height || 1);
         img.setScale(scale).setPosition(px, py).setDepth(py).setVisible(true);
-        this.hpBar(px, py - box / 2 - 7, box * 0.8, e);
+        this.hpBar(px, py - box / 2 - 7, box * 0.8, e, e.kind === 'tower' && e.towerType !== 'king');
       } else {
         const dead = this.sprites.get(e.id);
         if (dead) { dead.destroy(); this.sprites.delete(e.id); }
         this.drawShape(px, py, sx, e);
       }
+
+      if (e.kind === 'tower') this.towerLabel(e, px, py - (boxTiles(e) * sx) / 2 - 9);
     }
 
     for (const [id, img] of this.sprites) {
       if (!seen.has(id)) { img.destroy(); this.sprites.delete(id); }
+    }
+    for (const [id, txt] of this.labels) {
+      if (!seen.has(id)) { txt.destroy(); this.labels.delete(id); }
+    }
+
+    if (this.marker) {
+      const { px, py } = this.toPx(this.marker.x, this.marker.y);
+      const r = this.sx() * 1.3;
+      const col = this.marker.valid ? 0x4caf50 : 0xe53935;
+      g.fillStyle(col, 0.2).fillCircle(px, py, r);
+      g.lineStyle(3, col, 0.95).strokeCircle(px, py, r);
+      g.lineStyle(2, col, 0.6).strokeCircle(px, py, r * 0.5);
     }
   }
 
@@ -183,7 +208,7 @@ class FieldScene extends Phaser.Scene {
       g.fillTriangle(cx + cw * 0.68, cy + cw * 0.5, cx + cw * 0.84, cy, cx + cw, cy + cw * 0.5);
       g.fillRect(cx, cy + cw * 0.45, cw, cw * 0.18);
     }
-    this.hpBar(px, y - (king ? s * 0.55 : 9), s * 0.95, e);
+    this.hpBar(px, y - (king ? s * 0.55 : 9), s * 0.95, e, !king);
   }
 
   private drawBoss(px: number, py: number, sx: number, e: EntitySnapshot) {
@@ -206,8 +231,23 @@ class FieldScene extends Phaser.Scene {
     this.hpBar(px, py - r - 10, r * 1.6, e);
   }
 
-  private hpBar(cx: number, top: number, width: number, e: EntitySnapshot) {
-    if (!(e.maxHp > 0) || e.hp >= e.maxHp) return;
+  /** HP number above towers: princess always, king only once active (damaged). */
+  private towerLabel(e: EntitySnapshot, px: number, topY: number) {
+    const show = e.towerType !== 'king' || e.hp < e.maxHp;
+    let txt = this.labels.get(e.id);
+    if (!show) { txt?.setVisible(false); return; }
+    if (!txt) {
+      txt = this.add.text(px, topY, '', {
+        fontFamily: 'Arial, sans-serif', fontSize: '13px', fontStyle: 'bold',
+        color: '#ffffff', stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5, 1).setDepth(20000);
+      this.labels.set(e.id, txt);
+    }
+    txt.setText(String(Math.max(0, Math.ceil(e.hp)))).setPosition(px, topY).setVisible(true);
+  }
+
+  private hpBar(cx: number, top: number, width: number, e: EntitySnapshot, always = false) {
+    if (!(e.maxHp > 0) || (!always && e.hp >= e.maxHp)) return;
     const g = this.gfx;
     const frac = Math.max(0, e.hp / e.maxHp);
     const bx = cx - width / 2;
@@ -227,8 +267,12 @@ export class GameField {
   private game: Phaser.Game;
   private scene: FieldScene | null = null;
   private flip = false;
+  private width: number;
+  private height: number;
 
   constructor(parentId: string, width: number, height: number, onTap: (t: FieldTap) => void) {
+    this.width = width;
+    this.height = height;
     const scene = new FieldScene();
     this.scene = scene;
     this.game = new Phaser.Game({
@@ -249,5 +293,21 @@ export class GameField {
 
   setFlip(flip: boolean) { this.flip = flip; }
   render(entities: EntitySnapshot[]) { this.scene?.setData2(entities, this.flip); }
+
+  /** Map a viewport point (clientX/clientY) to a field tile, or null if outside. */
+  screenToTile(clientX: number, clientY: number): FieldTap | null {
+    const canvas = this.game.canvas;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+    const px = (clientX - rect.left) * (this.width / rect.width);
+    const py = (clientY - rect.top) * (this.height / rect.height);
+    return this.scene?.pxToTile(px, py) ?? null;
+  }
+
+  setMarker(tile: FieldTap | null, valid: boolean) {
+    this.scene?.setMarker(tile ? { x: tile.x, y: tile.y, valid } : null);
+  }
+
   destroy() { this.game.destroy(true); }
 }

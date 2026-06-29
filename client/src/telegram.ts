@@ -7,6 +7,8 @@ interface TgWebApp {
   initDataUnsafe?: { user?: { id: number; username?: string; language_code?: string } };
   ready(): void;
   expand(): void;
+  /** Bot API 7.7+: stop Telegram from treating vertical drags as a close gesture. */
+  disableVerticalSwipes?(): void;
   colorScheme?: string;
   HapticFeedback?: { impactOccurred(style: string): void; notificationOccurred(type: string): void };
   MainButton?: unknown;
@@ -24,6 +26,10 @@ export function initTelegram(): void {
   if (tg) {
     tg.ready();
     tg.expand();
+    // Critical for battle: otherwise a vertical drag (used to place a card on the
+    // field) is captured by Telegram as a "minimize app" gesture and never reaches
+    // the game. Method exists from Bot API 7.7 — guard for older clients.
+    try { tg.disableVerticalSwipes?.(); } catch { /* older client */ }
   }
 }
 

@@ -18,9 +18,18 @@ export interface HandUI {
   setHand(hand: string[], nextCard: string, elixir: number): void;
   selected(): string | null;
   clearSelection(): void;
+  /** Pause DOM rebuilds during a drag so the dragged card isn't orphaned. */
+  setRenderHold(hold: boolean): void;
 }
 
-export function buildHand(container: HTMLElement, onSelect: () => void): HandUI {
+export interface HandHandlers {
+  /** Tap-to-select (desktop fallback). */
+  onSelect?: () => void;
+  /** Press on an affordable card → start a drag-to-deploy gesture. */
+  onDragStart?: (cardId: string, cell: HTMLElement, ev: PointerEvent) => void;
+}
+
+export function buildHand(container: HTMLElement, handlers: HandHandlers = {}): HandUI {
   let selectedId: string | null = null;
   let current: string[] = [];
 
@@ -43,21 +52,33 @@ export function buildHand(container: HTMLElement, onSelect: () => void): HandUI 
         if (!affordable) return;
         selectedId = selectedId === id ? null : id;
         rerender(elixir);
-        onSelect();
+        handlers.onSelect?.();
       };
+      if (affordable && handlers.onDragStart) {
+        cell.addEventListener('pointerdown', (ev) => handlers.onDragStart!(id, cell, ev));
+      }
       container.appendChild(cell);
     });
   }
 
-  return {
-    setHand(hand, _next, elixir) {
+  let hold = false;
+  let pending: { hand: string[]; next: string; elixir: number } | null = null;
+
+  const api: HandUI = {
+    setHand(hand, next, elixir) {
+      if (hold) { pending = { hand, next, elixir }; return; }
       current = hand;
       if (selectedId && !hand.includes(selectedId)) selectedId = null;
       rerender(elixir);
     },
     selected: () => selectedId,
     clearSelection() { selectedId = null; },
+    setRenderHold(h) {
+      hold = h;
+      if (!h && pending) { const p = pending; pending = null; api.setHand(p.hand, p.next, p.elixir); }
+    },
   };
+  return api;
 }
 
 export function elixirBarHtml(): string {

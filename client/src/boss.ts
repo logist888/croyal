@@ -2,13 +2,15 @@
  * Clan boss raid controller (co-op). Joins the clan's shared boss room,
  * renders the boss + troops, and shows live per-player damage.
  */
-import type { BossSnapshot, BossResult, ServerMessage } from '@croyal/shared';
+import { getCard, isWithinField, ARENA_HEIGHT, type BossSnapshot, type BossResult, type ServerMessage } from '@croyal/shared';
 import { socket } from './net';
 import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
-import { GameField } from './field';
+import { GameField, type FieldTap } from './field';
 import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, nextCardHtml, setNextCard, type HandUI } from './hud';
+import { beginCardDrag } from './deploy-drag';
 import { haptic } from './telegram';
 import { t } from './i18n';
+import { cardImageUrl } from './assets';
 
 export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   let field: GameField | null = null;
@@ -47,7 +49,25 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     nav.toClans();
   };
 
-  hand = buildHand(root.querySelector<HTMLDivElement>('#hand')!, () => {});
+  // Boss raid: troops land in the lower band of the field (boss is at the top).
+  function validateDeploy(cardId: string, tile: FieldTap): boolean {
+    const c = getCard(cardId);
+    if (!c || !isWithinField(tile.x, tile.y)) return false;
+    return c.type === 'spell' || tile.y >= ARENA_HEIGHT * 0.4;
+  }
+
+  hand = buildHand(root.querySelector<HTMLDivElement>('#hand')!, {
+    onDragStart: (cardId, cell, ev) => beginCardDrag(cardId, cell, ev, {
+      field: () => field,
+      validate: validateDeploy,
+      deploy: (id, tile) => {
+        socket.send({ t: 'bossDeploy', cardId: id, x: tile.x, y: tile.y });
+        hand?.clearSelection();
+      },
+      cardArt: (id) => cardImageUrl(id),
+      setHoldRender: (h) => hand?.setRenderHold(h),
+    }),
+  });
 
   const { w, h } = computeFieldSize();
   field = new GameField('arena', w, h, (tap) => {

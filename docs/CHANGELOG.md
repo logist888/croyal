@@ -3,6 +3,27 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-13 — Battle: drag-to-deploy fix + original-game parity
+Fixes the reported bug "couldn't place a single card during battle" and brings the
+battle closer to the reference game.
+- **Drag-to-deploy** (`client/deploy-drag.ts`): press a hand card and drag it onto
+  the field — a ghost follows the finger and the field shows a green/red placement
+  marker; release to deploy, drop outside a valid zone to cancel (no elixir spent).
+  Tap-to-select then tap-the-field still works as a desktop fallback.
+- **Telegram swipe fix** (`telegram.ts`): call `WebApp.disableVerticalSwipes()` so a
+  vertical drag is no longer eaten by Telegram's "minimize app" gesture — the main
+  reason dragging did nothing inside the Mini App. Plus `touch-action:none` on the
+  arena/hand and `overscroll-behavior:none` so the gesture reaches the canvas.
+- **Shared deploy rule** (`shared/deploy.ts`): `canDeployTroop`/`isWithinField` are
+  now one source of truth used by both the authoritative server and the client's
+  live drag preview (own half; an enemy lane opens once its princess tower falls;
+  spells anywhere). The drag preview highlights valid/invalid in real time.
+- **HUD parity**: opponent name in the battle top bar (from `matchFound`); tower HP
+  numbers above towers (princess always; king once active), like the reference.
+- **Drag robustness**: the hand pauses DOM rebuilds during a gesture so a 10 Hz
+  snapshot can't orphan the dragged card / break pointer capture.
+- 33 tests (5 new deploy-zone tests) + typecheck + client build all green.
+
 ## build-12 — Durable storage: PostgreSQL write-through
 - Added `server/src/db.ts` (node-`pg`): the in-memory store stays the synchronous
   runtime source of truth, but every change **writes through to PostgreSQL** and the

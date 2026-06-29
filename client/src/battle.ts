@@ -1,11 +1,15 @@
 /**
  * 1v1 battle controller: matchmaking, Phaser field, HUD and deploy input.
  */
-import { getCard, type BattleSnapshot, type MatchResult, type ServerMessage } from '@croyal/shared';
+import {
+  getCard, canDeployTroop, isWithinField, ARENA_WIDTH, otherSide,
+  type BattleSnapshot, type MatchResult, type ServerMessage,
+} from '@croyal/shared';
 import { socket } from './net';
-import { setUI, setGameVisible, hex, type Nav } from './ui';
-import { GameField } from './field';
+import { setUI, setGameVisible, hex, escapeHtml, type Nav } from './ui';
+import { GameField, type FieldTap } from './field';
 import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, nextCardHtml, setNextCard, type HandUI } from './hud';
+import { beginCardDrag } from './deploy-drag';
 import { haptic } from './telegram';
 import { t, reasonText } from './i18n';
 import { cardImageUrl } from './assets';
@@ -14,8 +18,18 @@ export async function startBattle(nav: Nav): Promise<void> {
   let field: GameField | null = null;
   let hand: HandUI | null = null;
   let yourSide: 'A' | 'B' = 'A';
+  let enemyDown = { left: false, right: false };
+  let opponentName = '';
   let off: (() => void) | null = null;
   let inMatch = false;
+
+  // Mirror of the server's deploy rule, used for the live drag preview.
+  function validateDeploy(cardId: string, tile: FieldTap): boolean {
+    const c = getCard(cardId);
+    if (!c) return false;
+    if (c.type === 'spell') return isWithinField(tile.x, tile.y);
+    return canDeployTroop(yourSide, tile.x, tile.y, enemyDown);
+  }
 
   setGameVisible(false);
   const searching = document.createElement('div');
@@ -43,8 +57,9 @@ export async function startBattle(nav: Nav): Promise<void> {
     root.className = 'hud';
     root.innerHTML = `
       <div class="hud-top">
-        <button id="leave" class="danger" style="padding:6px 12px">${t('common.leave')}</button>
-        <span id="score" class="chip score">0 — 0</span>
+        <button id="leave" class="danger" style="padding:6px 10px">✕</button>
+        <span class="vs-name" title="${escapeHtml(opponentName)}">${escapeHtml(opponentName || '—')}</span>
+        <span id="score" class="chip score">👑 0 — 0</span>
         <span id="timer" class="chip timer">4:00</span>
       </div>
       <div id="arena" class="arena-host"></div>
@@ -55,12 +70,32 @@ export async function startBattle(nav: Nav): Promise<void> {
     root.querySelector<HTMLButtonElement>('#leave')!.onclick = () => {
       socket.send({ t: 'leaveMatch' });
     };
-    hand = buildHand(root.querySelector<HTMLDivElement>('#hand')!, () => {});
+    hand = buildHand(root.querySelector<HTMLDivElement>('#hand')!, {
+      onDragStart: (cardId, cell, ev) => beginCardDrag(cardId, cell, ev, {
+        field: () => field,
+        validate: validateDeploy,
+        deploy: (id, tile) => {
+          socket.send({ t: 'deploy', cardId: id, x: tile.x, y: tile.y });
+          hand?.clearSelection();
+        },
+        cardArt: (id) => cardImageUrl(id),
+        setHoldRender: (h) => hand?.setRenderHold(h),
+      }),
+    });
     return root;
   }
 
   function onSnapshot(root: HTMLElement, snap: BattleSnapshot) {
     yourSide = snap.yourSide;
+    // Which enemy princess towers are down → opens that lane for deployment.
+    const enemy = otherSide(yourSide);
+    let leftAlive = false, rightAlive = false;
+    for (const e of snap.entities) {
+      if (e.kind === 'tower' && e.side === enemy && e.towerType?.startsWith('princess') && e.hp > 0) {
+        if (e.x < ARENA_WIDTH / 2) leftAlive = true; else rightAlive = true;
+      }
+    }
+    enemyDown = { left: !leftAlive, right: !rightAlive };
     if (field) field.setFlip(yourSide === 'B');
     field?.render(snap.entities);
     const myElixir = snap.elixir[yourSide];
@@ -134,6 +169,7 @@ export async function startBattle(nav: Nav): Promise<void> {
   off = socket.on((msg: ServerMessage) => {
     if (msg.t === 'matchFound' && !inMatch) {
       inMatch = true;
+      opponentName = msg.opponent;
       const { w, h } = computeFieldSize();
       root = buildBattleUI();
       field = new GameField('arena', w, h, (tap) => {

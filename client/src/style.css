@@ -32,6 +32,8 @@ html, body {
     radial-gradient(120% 80% at 50% 0%, #2c6b2c 0%, #1c4a1c 60%, #123012 100%) fixed;
   color: var(--cream);
   font-family: var(--tg-theme-font, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif);
+  /* Stop the page from bouncing/scrolling so battle drags reach the canvas. */
+  overscroll-behavior: none;
 }
 
 #app {
@@ -41,7 +43,9 @@ html, body {
   min-height: 100vh;
 }
 #game, .arena-host { display: flex; justify-content: center; }
-.arena-host { margin: 6px 0; }
+/* touch-action:none → the canvas (not the browser) gets drag gestures, so cards
+   can be dragged onto the field without the page scrolling/zooming. */
+.arena-host { margin: 6px 0; touch-action: none; }
 #game canvas, .arena-host canvas {
   display: block;
   border-radius: 14px;
@@ -182,6 +186,11 @@ input[type="text"]::placeholder { color: #9b8763; }
 }
 .chip.timer { color: #fff; }
 .chip.score { letter-spacing: 1px; }
+.vs-name {
+  flex: 1; min-width: 0; font-weight: 900; font-size: 14px; color: var(--cream);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
 
 /* Elixir bar with 10 segments + counter */
 .elixir-wrap { display: flex; align-items: center; gap: 8px; padding: 6px 12px; }
@@ -207,7 +216,7 @@ input[type="text"]::placeholder { color: #9b8763; }
 .elixir-num { width: 26px; text-align: center; font-weight: 900; color: #f3a8ff; }
 
 /* Hand */
-.handbar { display: flex; gap: 8px; padding: 8px 10px 12px; align-items: stretch; }
+.handbar { display: flex; gap: 8px; padding: 8px 10px 12px; align-items: stretch; touch-action: none; }
 .next-card {
   flex: none; width: 46px; border-radius: 10px; display: flex; flex-direction: column;
   align-items: center; justify-content: flex-end; padding-bottom: 4px; font-size: 10px; font-weight: 800;
@@ -225,8 +234,18 @@ input[type="text"]::placeholder { color: #9b8763; }
   box-shadow: inset 0 2px 0 rgba(255,255,255,0.3), 0 3px 0 rgba(0,0,0,0.4);
   text-shadow: 0 1px 2px rgba(0,0,0,0.6);
   background-position: center; background-repeat: no-repeat; background-size: cover;
-  user-select: none; cursor: pointer;
+  user-select: none; cursor: pointer; touch-action: none; -webkit-user-drag: none;
 }
+/* The card lifted under the finger while dragging it toward the field. */
+.handcard.dragging { opacity: 0.35; }
+.drag-ghost {
+  position: fixed; z-index: 200; width: 64px; aspect-ratio: 3 / 4; margin: -42px 0 0 -32px;
+  border-radius: 12px; pointer-events: none; transform: scale(1.12);
+  background-position: center; background-repeat: no-repeat; background-size: contain;
+  border: 2px solid var(--gold-1); box-shadow: 0 6px 14px rgba(0,0,0,0.5);
+  filter: drop-shadow(0 0 6px rgba(255,255,255,0.4));
+}
+.drag-ghost.invalid { filter: grayscale(0.7) brightness(0.7); border-color: var(--red-1); }
 /* When a card has real art (which already includes its frame, name and cost) we
    show only the image and drop our own frame/overlays. */
 .handcard.has-art { padding: 0; border: none; box-shadow: none; background-size: contain; }

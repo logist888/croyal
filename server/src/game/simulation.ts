@@ -3,11 +3,11 @@
  * The client never runs this for truth — it only renders snapshots.
  */
 import {
-  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HALF_HEIGHT, BRIDGE_X,
+  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, BRIDGE_X,
   ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
   ROUND_SECONDS, DOUBLE_ELIXIR_LAST_SECONDS,
   KING_TOWER, PRINCESS_TOWER, TOWER_POSITIONS, otherSide,
-  CARDS, getCard, levelStatMultiplier,
+  CARDS, getCard, levelStatMultiplier, canDeployTroop,
   type Side, type TowerType, type CardDef, type TargetKind,
   type BattleSnapshot, type EntitySnapshot, type MatchResult,
 } from '@croyal/shared';
@@ -143,20 +143,13 @@ export class Simulation {
     return this.queue[side][4];
   }
 
-  /** Whether a position is a legal deploy spot for `side`. */
+  /** Whether a position is a legal deploy spot for `side` (shared client/server rule). */
   private canDeployAt(side: Side, x: number, y: number): boolean {
-    if (x < 0.5 || x > ARENA_WIDTH - 0.5 || y < 0.5 || y > ARENA_HEIGHT - 0.5) return false;
     const enemy = otherSide(side);
-    const ownHalf = side === 'A' ? y > RIVER_Y + RIVER_HALF_HEIGHT : y < RIVER_Y - RIVER_HALF_HEIGHT;
-    if (ownHalf) return true;
-
-    // Crossing onto the enemy half is only allowed in a lane whose enemy princess tower is down.
-    const leftDown = !this.getTower(enemy, 'princessLeft');
-    const rightDown = !this.getTower(enemy, 'princessRight');
-    const onLeft = x < ARENA_WIDTH / 2;
-    if (onLeft && leftDown) return true;
-    if (!onLeft && rightDown) return true;
-    return false;
+    return canDeployTroop(side, x, y, {
+      left: !this.getTower(enemy, 'princessLeft'),
+      right: !this.getTower(enemy, 'princessRight'),
+    });
   }
 
   deploy(side: Side, cardId: string, x: number, y: number): DeployResult {
