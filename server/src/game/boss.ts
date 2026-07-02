@@ -7,8 +7,11 @@ import {
   TICK_DT, TICK_RATE, SNAPSHOT_RATE, ARENA_WIDTH, ARENA_HEIGHT,
   ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
   BOSS_RAID_SECONDS, BOSS_BASE_HP, BOSS_BASE_DAMAGE, BOSS_COOP_MULTIPLIER, BOSS_MAX_PLAYERS,
+  BOSS_RAIDER_COOLDOWN_MULT,
   getCard, type ServerMessage, type BossSnapshot, type EntitySnapshot, type BossResult,
+  type BattleConfig, type CardCooldown,
 } from '@croyal/shared';
+import { ACTIVE_BATTLE_CONFIG } from './active-config';
 
 type Sender = (msg: ServerMessage) => void;
 
@@ -17,6 +20,8 @@ interface Participant {
   nickname: string;
   elixir: number;
   queue: string[];
+  /** Per-card recharge (cooldown economy; raider cooldowns run x1.5 long). */
+  cooldowns: Map<string, number>;
   damageDealt: number;
   send: Sender;
 }
@@ -59,6 +64,7 @@ export class BossRoom {
   constructor(
     public readonly clanId: string,
     private onEmpty: (room: BossRoom) => void,
+    private config: BattleConfig = ACTIVE_BATTLE_CONFIG,
   ) {}
 
   get size(): number {
@@ -77,8 +83,10 @@ export class BossRoom {
     if (this.ended) return { ok: false, error: 'raid ended' };
     if (this.participants.has(userId)) return { ok: false, error: 'already in raid' };
     if (this.participants.size >= BOSS_MAX_PLAYERS) return { ok: false, error: 'raid full' };
+    const cooldowns = new Map<string, number>();
+    for (const id of deck) cooldowns.set(id, 0);
     this.participants.set(userId, {
-      userId, nickname, elixir: ELIXIR_START, queue: [...deck], damageDealt: 0, send,
+      userId, nickname, elixir: ELIXIR_START, queue: [...deck], cooldowns, damageDealt: 0, send,
     });
     this.recomputeDifficulty();
     if (!this.timer) this.start();
@@ -111,36 +119,59 @@ export class BossRoom {
     this.onEmpty(this);
   }
 
-  deploy(userId: string, cardId: string, x: number, y: number): void {
+  /** Exposed for tests: seconds until a participant's card is playable again. */
+  cooldownOf(userId: string, cardId: string): number {
+    return this.participants.get(userId)?.cooldowns.get(cardId) ?? 0;
+  }
+
+  private handOf(p: Participant): string[] {
+    return this.config.economy === 'cooldown' ? p.queue : p.queue.slice(0, 4);
+  }
+
+  deploy(userId: string, cardId: string, x?: number, y?: number): void {
     if (this.ended) return;
     const p = this.participants.get(userId);
     if (!p) return;
     const card = getCard(cardId);
     if (!card) return;
-    if (!p.queue.slice(0, 4).includes(cardId)) return;
-    if (p.elixir < card.cost) return;
-    p.elixir -= card.cost;
-    // cycle
-    const idx = p.queue.indexOf(cardId);
-    if (idx >= 0) {
-      p.queue.splice(idx, 1);
-      p.queue.push(cardId);
+    if (!this.handOf(p).includes(cardId)) return;
+
+    // Economy gate + payment
+    if (this.config.economy === 'cooldown') {
+      if ((p.cooldowns.get(cardId) ?? 0) > 0) return;
+      p.cooldowns.set(cardId, card.cooldownSec * BOSS_RAIDER_COOLDOWN_MULT);
+    } else {
+      if (p.elixir < card.cost) return;
+      p.elixir -= card.cost;
+      // cycle
+      const idx = p.queue.indexOf(cardId);
+      if (idx >= 0) {
+        p.queue.splice(idx, 1);
+        p.queue.push(cardId);
+      }
     }
 
     if (card.type === 'spell') {
-      if (dist(x, y, BOSS_POS.x, BOSS_POS.y) <= (card.spellRadius ?? 1)) {
+      // Coordinate-free casts (cooldown client) auto-aim at the boss.
+      const sx = x ?? BOSS_POS.x;
+      const sy = y ?? BOSS_POS.y;
+      if (dist(sx, sy, BOSS_POS.x, BOSS_POS.y) <= (card.spellRadius ?? 1)) {
         this.damageBoss(card.spellDamage ?? 0, p);
       }
       return;
     }
+    // Coordinate-free troops spawn on the raider band, spread by join order.
+    const seat = [...this.participants.keys()].indexOf(userId);
+    const bx = x ?? ARENA_WIDTH * (0.3 + 0.4 * ((seat % 5) / 4));
+    const by = y ?? ARENA_HEIGHT * 0.8;
     const count = card.count ?? 1;
     for (let i = 0; i < count; i++) {
       this.units.push({
         id: `u-${this.seq++}`,
         ownerId: userId,
         cardId: card.id,
-        x: clamp(x + (i - count / 2) * 0.5, 0.5, ARENA_WIDTH - 0.5),
-        y: clamp(y, ARENA_HEIGHT * 0.4, ARENA_HEIGHT - 0.5),
+        x: clamp(bx + (i - count / 2) * 0.5, 0.5, ARENA_WIDTH - 0.5),
+        y: clamp(by, ARENA_HEIGHT * 0.4, ARENA_HEIGHT - 0.5),
         hp: card.hp ?? 100,
         maxHp: card.hp ?? 100,
         damage: card.damage ?? 0,
@@ -165,9 +196,17 @@ export class BossRoom {
     this.tickCount++;
     this.timeLeft = Math.max(0, this.timeLeft - TICK_DT);
 
-    // elixir regen
-    for (const p of this.participants.values()) {
-      p.elixir = Math.min(ELIXIR_MAX, p.elixir + TICK_DT / ELIXIR_REGEN_SECONDS);
+    // economy tick: card recharges OR elixir regen
+    if (this.config.economy === 'cooldown') {
+      for (const p of this.participants.values()) {
+        for (const [id, v] of p.cooldowns) {
+          if (v > 0) p.cooldowns.set(id, Math.max(0, v - TICK_DT));
+        }
+      }
+    } else {
+      for (const p of this.participants.values()) {
+        p.elixir = Math.min(ELIXIR_MAX, p.elixir + TICK_DT / ELIXIR_REGEN_SECONDS);
+      }
     }
 
     // units move toward boss and attack it
@@ -232,8 +271,16 @@ export class BossRoom {
         userId: x.userId, nickname: x.nickname, damageDealt: Math.round(x.damageDealt),
       })),
       yourElixir: round2(p.elixir),
-      hand: p.queue.slice(0, 4),
-      nextCard: p.queue[4],
+      hand: this.handOf(p),
+      nextCard: this.config.economy === 'cooldown' ? '' : p.queue[4],
+      mode: { economy: this.config.economy, deployment: this.config.deployment },
+      cooldowns: this.config.economy === 'cooldown'
+        ? p.queue.map((id): CardCooldown => ({
+            cardId: id,
+            remaining: round2(p.cooldowns.get(id) ?? 0),
+            total: round2((getCard(id)?.cooldownSec ?? 0) * BOSS_RAIDER_COOLDOWN_MULT),
+          }))
+        : undefined,
     };
   }
 

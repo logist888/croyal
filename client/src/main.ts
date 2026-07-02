@@ -42,6 +42,7 @@ async function boot() {
 
   try {
     const res = await api.auth({ initData, devUser });
+    if (res.mode) state.mode = res.mode;
     if (res.registered && res.token && res.profile) {
       state.token = res.token;
       state.profile = res.profile;

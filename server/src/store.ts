@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
-  DEFAULT_DECK, MAX_CLAN_MEMBERS, ALL_CARD_IDS, MAX_CARD_LEVEL,
+  DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, MAX_CLAN_MEMBERS, ALL_CARD_IDS, MAX_CARD_LEVEL,
   cardsToUpgrade, goldToUpgrade, xpForUpgrade,
   validateNickname, validateClanName,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
@@ -81,6 +81,8 @@ export class Store {
       gems: 0,
       xp: 0,
       deck: [...DEFAULT_DECK],
+      trio: [...DEFAULT_TRIO],
+      starterBoxesOpened: 0,
       cards,
       clanId: null,
       createdAt: Date.now(),
@@ -121,6 +123,22 @@ export class Store {
     user.gold -= needGold;
     cs.level += 1;
     user.xp += xpForUpgrade(cs.level);
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  /** Set the active battle trio: exactly TRIO_SIZE distinct, owned cards. */
+  setTrio(userId: string, trio: string[]): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    if (!Array.isArray(trio) || trio.length !== TRIO_SIZE) {
+      throw new Error(`Trio must contain exactly ${TRIO_SIZE} cards`);
+    }
+    if (new Set(trio).size !== trio.length) throw new Error('Trio cards must be unique');
+    for (const id of trio) {
+      if (!user.cards[id]) throw new Error(`Card not owned: ${id}`);
+    }
+    user.trio = [...trio];
     this.db?.upsertUser(user);
     return user;
   }

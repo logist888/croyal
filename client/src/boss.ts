@@ -4,9 +4,13 @@
  */
 import { getCard, isWithinField, ARENA_HEIGHT, type BossSnapshot, type BossResult, type ServerMessage } from '@croyal/shared';
 import { socket } from './net';
+import { state } from './state';
 import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
 import { GameField, type FieldTap } from './field';
-import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, nextCardHtml, setNextCard, type HandUI } from './hud';
+import {
+  buildHand, buildTrioHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime,
+  nextCardHtml, setNextCard, type HandUI, type TrioUI,
+} from './hud';
 import { beginCardDrag } from './deploy-drag';
 import { haptic } from './telegram';
 import { t } from './i18n';
@@ -15,7 +19,9 @@ import { cardImageUrl } from './assets';
 export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   let field: GameField | null = null;
   let hand: HandUI | null = null;
+  let trio: TrioUI | null = null;
   let off: (() => void) | null = null;
+  const cooldownMode = state.mode.economy === 'cooldown';
 
   function cleanup() {
     off?.();
@@ -37,8 +43,10 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
       <div class="muted" id="bosshp-label" style="margin-top:2px">Boss</div>
     </div>
     <div id="arena" class="arena-host"></div>
-    ${elixirBarHtml()}
-    <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>
+    ${cooldownMode
+      ? `<div class="handbar"><div class="hand" id="hand"></div></div>`
+      : `${elixirBarHtml()}
+         <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`}
     <div class="card"><div class="muted">${t('boss.raiders')}</div><div id="parts"></div></div>`;
   setUI(root);
   setGameVisible(false);
@@ -56,21 +64,33 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     return c.type === 'spell' || tile.y >= ARENA_HEIGHT * 0.4;
   }
 
-  hand = buildHand(root.querySelector<HTMLDivElement>('#hand')!, {
-    onDragStart: (cardId, cell, ev) => beginCardDrag(cardId, cell, ev, {
-      field: () => field,
-      validate: validateDeploy,
-      deploy: (id, tile) => {
-        socket.send({ t: 'bossDeploy', cardId: id, x: tile.x, y: tile.y });
-        hand?.clearSelection();
+  const handEl = root.querySelector<HTMLDivElement>('#hand')!;
+  if (cooldownMode) {
+    // Tap-to-play: troops land on the raider band, spells auto-aim at the boss.
+    trio = buildTrioHand(handEl, {
+      onPlay: (cardId) => {
+        socket.send({ t: 'bossDeploy', cardId });
+        haptic('light');
       },
-      cardArt: (id) => cardImageUrl(id),
-      setHoldRender: (h) => hand?.setRenderHold(h),
-    }),
-  });
+    });
+  } else {
+    hand = buildHand(handEl, {
+      onDragStart: (cardId, cell, ev) => beginCardDrag(cardId, cell, ev, {
+        field: () => field,
+        validate: validateDeploy,
+        deploy: (id, tile) => {
+          socket.send({ t: 'bossDeploy', cardId: id, x: tile.x, y: tile.y });
+          hand?.clearSelection();
+        },
+        cardArt: (id) => cardImageUrl(id),
+        setHoldRender: (h) => hand?.setRenderHold(h),
+      }),
+    });
+  }
 
   const { w, h } = computeFieldSize();
   field = new GameField('arena', w, h, (tap) => {
+    if (cooldownMode) return; // tap-to-play happens on the cards themselves
     const id = hand?.selected();
     if (!id) return;
     socket.send({ t: 'bossDeploy', cardId: id, x: tap.x, y: tap.y });
@@ -80,9 +100,13 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
 
   function onSnapshot(snap: BossSnapshot) {
     field?.render(snap.entities);
-    setElixir(root, snap.yourElixir);
-    hand?.setHand(snap.hand, snap.nextCard, snap.yourElixir);
-    setNextCard(root, snap.nextCard);
+    if (cooldownMode) {
+      trio?.setCooldowns(snap.cooldowns ?? []);
+    } else {
+      setElixir(root, snap.yourElixir);
+      hand?.setHand(snap.hand, snap.nextCard, snap.yourElixir);
+      setNextCard(root, snap.nextCard);
+    }
 
     const bossHp = root.querySelector<HTMLDivElement>('#boss-hp')!;
     bossHp.style.width = `${Math.max(0, (snap.bossHp / snap.bossMaxHp) * 100)}%`;

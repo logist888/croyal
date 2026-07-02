@@ -1,4 +1,5 @@
 export * from './constants';
+export * from './battle-config';
 export * from './cards';
 export * from './validation';
 export * from './deploy';

@@ -1,14 +1,23 @@
 /**
  * 1v1 battle controller: matchmaking, Phaser field, HUD and deploy input.
+ *
+ * Two battle models (GDD reversibility): the cooldown/fixed-lane HUD (tap a
+ * card to play; spells enter aim mode) and the legacy elixir/free-placement
+ * HUD (drag-to-deploy). The server's mode decides which one renders.
  */
 import {
   getCard, canDeployTroop, isWithinField, ARENA_WIDTH, otherSide,
+  COOLDOWN_BATTLE_CONFIG, LEGACY_BATTLE_CONFIG,
   type BattleSnapshot, type MatchResult, type ServerMessage,
 } from '@croyal/shared';
 import { socket } from './net';
+import { state } from './state';
 import { setUI, setGameVisible, hex, escapeHtml, type Nav } from './ui';
 import { GameField, type FieldTap } from './field';
-import { buildHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime, nextCardHtml, setNextCard, type HandUI } from './hud';
+import {
+  buildHand, buildTrioHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime,
+  nextCardHtml, setNextCard, type HandUI, type TrioUI,
+} from './hud';
 import { beginCardDrag } from './deploy-drag';
 import { haptic } from './telegram';
 import { t, reasonText } from './i18n';
@@ -17,11 +26,14 @@ import { cardImageUrl } from './assets';
 export async function startBattle(nav: Nav): Promise<void> {
   let field: GameField | null = null;
   let hand: HandUI | null = null;
+  let trio: TrioUI | null = null;
+  let aimingSpell: string | null = null;
   let yourSide: 'A' | 'B' = 'A';
   let enemyDown = { left: false, right: false };
   let opponentName = '';
   let off: (() => void) | null = null;
   let inMatch = false;
+  const cooldownMode = state.mode.economy === 'cooldown';
 
   // Mirror of the server's deploy rule, used for the live drag preview.
   function validateDeploy(cardId: string, tile: FieldTap): boolean {
@@ -52,7 +64,15 @@ export async function startBattle(nav: Nav): Promise<void> {
     setGameVisible(false);
   }
 
+  function setAiming(cardId: string | null) {
+    aimingSpell = cardId;
+    trio?.setAiming(cardId);
+    const hint = document.querySelector<HTMLDivElement>('#aim-hint');
+    if (hint) hint.style.display = cardId ? '' : 'none';
+  }
+
   function buildBattleUI() {
+    const roundSeconds = cooldownMode ? COOLDOWN_BATTLE_CONFIG.roundSeconds : LEGACY_BATTLE_CONFIG.roundSeconds;
     const root = document.createElement('div');
     root.className = 'hud';
     root.innerHTML = `
@@ -60,50 +80,82 @@ export async function startBattle(nav: Nav): Promise<void> {
         <button id="leave" class="danger" style="padding:6px 10px">✕</button>
         <span class="vs-name" title="${escapeHtml(opponentName)}">${escapeHtml(opponentName || '—')}</span>
         <span id="score" class="chip score">👑 0 — 0</span>
-        <span id="timer" class="chip timer">4:00</span>
+        <span id="timer" class="chip timer">${fmtTime(roundSeconds)}</span>
       </div>
       <div id="arena" class="arena-host"></div>
-      ${elixirBarHtml()}
-      <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`;
+      ${cooldownMode
+        ? `<div class="aim-hint" id="aim-hint" style="display:none">${t('battle.aimHint')}</div>
+           <div class="handbar"><div class="hand" id="hand"></div></div>`
+        : `${elixirBarHtml()}
+           <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`}`;
     setUI(root);
     setGameVisible(false);
     root.querySelector<HTMLButtonElement>('#leave')!.onclick = () => {
       socket.send({ t: 'leaveMatch' });
     };
-    hand = buildHand(root.querySelector<HTMLDivElement>('#hand')!, {
-      onDragStart: (cardId, cell, ev) => beginCardDrag(cardId, cell, ev, {
-        field: () => field,
-        validate: validateDeploy,
-        deploy: (id, tile) => {
-          socket.send({ t: 'deploy', cardId: id, x: tile.x, y: tile.y });
-          hand?.clearSelection();
+
+    const handEl = root.querySelector<HTMLDivElement>('#hand')!;
+    if (cooldownMode) {
+      // Tap-to-play: troops go out on your lane instantly, spells aim first.
+      trio = buildTrioHand(handEl, {
+        onPlay: (cardId) => {
+          const card = getCard(cardId);
+          if (!card) return;
+          if (card.type === 'spell') {
+            setAiming(aimingSpell === cardId ? null : cardId);
+            return;
+          }
+          setAiming(null);
+          socket.send({ t: 'deploy', cardId });
+          haptic('light');
         },
-        cardArt: (id) => cardImageUrl(id),
-        setHoldRender: (h) => hand?.setRenderHold(h),
-      }),
-    });
+      });
+    } else {
+      hand = buildHand(handEl, {
+        onDragStart: (cardId, cell, ev) => beginCardDrag(cardId, cell, ev, {
+          field: () => field,
+          validate: validateDeploy,
+          deploy: (id, tile) => {
+            socket.send({ t: 'deploy', cardId: id, x: tile.x, y: tile.y });
+            hand?.clearSelection();
+          },
+          cardArt: (id) => cardImageUrl(id),
+          setHoldRender: (h) => hand?.setRenderHold(h),
+        }),
+      });
+    }
     return root;
   }
 
   function onSnapshot(root: HTMLElement, snap: BattleSnapshot) {
     yourSide = snap.yourSide;
-    // Which enemy princess towers are down → opens that lane for deployment.
-    const enemy = otherSide(yourSide);
-    let leftAlive = false, rightAlive = false;
-    for (const e of snap.entities) {
-      if (e.kind === 'tower' && e.side === enemy && e.towerType?.startsWith('princess') && e.hp > 0) {
-        if (e.x < ARENA_WIDTH / 2) leftAlive = true; else rightAlive = true;
-      }
-    }
-    enemyDown = { left: !leftAlive, right: !rightAlive };
     if (field) field.setFlip(yourSide === 'B');
     field?.render(snap.entities);
-    const myElixir = snap.elixir[yourSide];
-    setElixir(root, myElixir);
-    hand?.setHand(snap.hand, snap.nextCard, myElixir);
-    setNextCard(root, snap.nextCard);
+
+    if (cooldownMode) {
+      trio?.setCooldowns(snap.cooldowns ?? []);
+    } else {
+      // Which enemy princess towers are down → opens that lane for deployment.
+      const enemy = otherSide(yourSide);
+      let leftAlive = false, rightAlive = false;
+      for (const e of snap.entities) {
+        if (e.kind === 'tower' && e.side === enemy && e.towerType?.startsWith('princess') && e.hp > 0) {
+          if (e.x < ARENA_WIDTH / 2) leftAlive = true; else rightAlive = true;
+        }
+      }
+      enemyDown = { left: !leftAlive, right: !rightAlive };
+      const myElixir = snap.elixir[yourSide];
+      setElixir(root, myElixir);
+      hand?.setHand(snap.hand, snap.nextCard, myElixir);
+      setNextCard(root, snap.nextCard);
+    }
+
     const timer = root.querySelector<HTMLSpanElement>('#timer');
-    if (timer) timer.textContent = fmtTime(snap.timeLeft) + (snap.doubleElixir ? ' ×2' : '');
+    if (timer) {
+      const fast = cooldownMode ? !!snap.finalPhase : snap.doubleElixir;
+      timer.textContent = fmtTime(snap.timeLeft) + (fast ? ' ×2' : '');
+      timer.classList.toggle('fast-phase', fast);
+    }
     const score = root.querySelector<HTMLSpanElement>('#score');
     if (score) {
       const enemy = yourSide === 'A' ? 'B' : 'A';
@@ -173,6 +225,15 @@ export async function startBattle(nav: Nav): Promise<void> {
       const { w, h } = computeFieldSize();
       root = buildBattleUI();
       field = new GameField('arena', w, h, (tap) => {
+        if (cooldownMode) {
+          // Field taps only aim spells — troops auto-march from the lane spawn.
+          if (!aimingSpell) return;
+          if (!isWithinField(tap.x, tap.y)) return;
+          socket.send({ t: 'deploy', cardId: aimingSpell, x: tap.x, y: tap.y });
+          setAiming(null);
+          haptic('light');
+          return;
+        }
         const id = hand?.selected();
         if (!id) return;
         socket.send({ t: 'deploy', cardId: id, x: tap.x, y: tap.y });

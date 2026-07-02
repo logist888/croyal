@@ -3,10 +3,12 @@
  * snapshots, runs the bot opponent (when there is no human), and reports results.
  */
 import {
-  TICK_DT, SNAPSHOT_RATE, TICK_RATE, ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y,
-  getCard, otherSide, type Side, type ServerMessage, type MatchResult, type BattleRewards,
+  TICK_DT, SNAPSHOT_RATE, TICK_RATE,
+  otherSide, type Side, type ServerMessage, type MatchResult, type BattleRewards, type BattleConfig,
 } from '@croyal/shared';
 import { Simulation } from './simulation';
+import { ACTIVE_BATTLE_CONFIG } from './active-config';
+import { pickBotAction, botNextDelay } from './bot';
 import type { Store } from '../store';
 
 export type Sender = (msg: ServerMessage) => void;
@@ -34,9 +36,10 @@ export class Match {
     private seatB: MatchSeat,
     private store: Store,
     private onEnd: (match: Match) => void,
+    config: BattleConfig = ACTIVE_BATTLE_CONFIG,
   ) {
     const seed = hashSeed(id);
-    this.sim = new Simulation(seatA.deck, seatB.deck, seed, this.levelsFor(seatA), this.levelsFor(seatB));
+    this.sim = new Simulation(seatA.deck, seatB.deck, seed, this.levelsFor(seatA), this.levelsFor(seatB), config);
     if (seatA.userId === null) this.botSide = 'A';
     if (seatB.userId === null) this.botSide = 'B';
   }
@@ -74,8 +77,8 @@ export class Match {
     if (this.seatB.userId) this.seatB.send({ t: 'battle', snapshot: this.sim.getSnapshot('B') });
   }
 
-  /** A deploy request from a connected player. */
-  handleDeploy(userId: string, cardId: string, x: number, y: number): void {
+  /** A deploy request from a connected player (coords absent for fixed-lane troops). */
+  handleDeploy(userId: string, cardId: string, x?: number, y?: number): void {
     if (this.ended) return;
     const side = this.sideOf(userId);
     if (!side) return;
@@ -100,25 +103,16 @@ export class Match {
   private runBot(side: Side): void {
     this.botCooldown -= TICK_DT;
     if (this.botCooldown > 0) return;
-    const hand = this.sim.handOf(side);
-    const elixir = this.sim.elixirOf(side);
-    const affordable = hand.filter((id) => (getCard(id)?.cost ?? 99) <= elixir);
-    if (affordable.length === 0) return;
-    // Prefer spending when elixir is plentiful.
-    if (elixir < 4) return;
-    const cardId = affordable[this.tickCount % affordable.length];
-    const card = getCard(cardId)!;
-    // Deploy on the bot's own half, biased toward a random lane / the bridge line.
-    const lane = this.tickCount % 2 === 0 ? ARENA_WIDTH * 0.25 : ARENA_WIDTH * 0.75;
-    const x = lane + ((this.tickCount % 5) - 2) * 0.4;
-    let y: number;
-    if (card.type === 'spell') {
-      // drop a spell on the enemy king area
-      y = side === 'A' ? 3 : ARENA_HEIGHT - 3;
-    } else {
-      y = side === 'A' ? RIVER_Y + 2 : RIVER_Y - 2;
+    const action = pickBotAction(this.sim, side, this.tickCount);
+
+    if (this.sim.battleConfig.economy === 'cooldown') {
+      // Paced play attempts (prototype rhythm) whether or not a card was ready.
+      if (action) this.sim.deploy(side, action.cardId, action.x, action.y);
+      this.botCooldown = botNextDelay(this.sim, this.tickCount);
+      return;
     }
-    this.sim.deploy(side, cardId, x, y);
+    if (!action) return; // elixir mode: retry next tick until something is affordable
+    this.sim.deploy(side, action.cardId, action.x, action.y);
     this.botCooldown = 1.5 + (this.tickCount % 3) * 0.5;
   }
 

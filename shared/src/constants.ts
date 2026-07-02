@@ -119,6 +119,41 @@ export function xpProgress(xp: number): { level: number; into: number; need: num
 /** Max crowns per side (2 princess + 1 king). */
 export const MAX_CROWNS = 3;
 
+// --- Fixed-lane deployment (cooldown battle model) ---
+/** Active battle cards per player in the cooldown model (the "battle trio"). */
+export const TRIO_SIZE = 3;
+
+/**
+ * Each side attacks along its own RIGHT lane (mirrored: the enemy arrives on
+ * your left). Spawn x sits exactly on that lane's bridge so the march path
+ * runs straight over it.
+ */
+export const LANE_SPAWN: Record<Side, { x: number; y: number }> = {
+  A: { x: BRIDGE_X[1], y: ARENA_HEIGHT * 0.76 },
+  B: { x: BRIDGE_X[0], y: ARENA_HEIGHT * 0.24 },
+};
+
+/** The enemy princess tower a side's lane march heads for (before the king). */
+export function laneTargetTower(side: Side): { enemySide: Side; towerType: TowerType } {
+  return side === 'A'
+    ? { enemySide: 'B', towerType: 'princessRight' }
+    : { enemySide: 'A', towerType: 'princessLeft' };
+}
+
+/** Lane-width x-window within which marching units naturally engage enemies (tiles). */
+export const ENGAGE_X_WINDOW = 2;
+/** Body radii used for attack reach and "never step inside a tower" collisions. */
+export const UNIT_BODY_RADIUS = 0.4;
+export const TOWER_BODY_RADIUS: Record<'king' | 'princess', number> = { king: 1.1, princess: 0.9 };
+export function towerBodyRadius(towerType: TowerType): number {
+  return towerType === 'king' ? TOWER_BODY_RADIUS.king : TOWER_BODY_RADIUS.princess;
+}
+
+// --- Bot pacing in the cooldown model (prototype anchors) ---
+export const BOT_PLAY_INTERVAL_SECONDS = 4.5;
+export const BOT_PLAY_INTERVAL_FINAL_SECONDS = 2.7;
+export const BOT_PLAY_JITTER_SECONDS = 1.0;
+
 // --- Clan boss raid ---
 export const BOSS_RAID_SECONDS = 180;
 export const BOSS_BASE_HP = 12000;
@@ -126,3 +161,9 @@ export const BOSS_BASE_DAMAGE = 120;
 /** Co-op (2+ players) DOUBLES boss difficulty (HP and damage). */
 export const BOSS_COOP_MULTIPLIER = 2;
 export const BOSS_MAX_PLAYERS = 20; // a full clan can raid together
+/**
+ * Cooldown economy: raider card cooldowns are stretched in boss raids as the
+ * difficulty lever. The ONLY allowed cooldown asymmetry — there is no human
+ * opponent in a raid, so fairness (symmetric PvP cooldowns) is preserved.
+ */
+export const BOSS_RAIDER_COOLDOWN_MULT = 1.5;

@@ -4,9 +4,10 @@
  * these method calls.
  */
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_DECK, type ServerMessage } from '@croyal/shared';
+import { DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, type PlayerProfile, type ServerMessage } from '@croyal/shared';
 import { Match, type MatchSeat, type Sender } from './game/match';
 import { BossRoom } from './game/boss';
+import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { store } from './store';
 
 const BOT_FALLBACK_MS = 6000;
@@ -36,7 +37,7 @@ export class GameManager {
       this.waiting = null;
       this.createMatch(
         { userId: opponent.userId, deck: deckOf(opponent.userId), send: opponent.send },
-        { userId, deck: profile.deck, send },
+        { userId, deck: battleDeckOf(profile), send },
       );
       return;
     }
@@ -61,8 +62,8 @@ export class GameManager {
     const profile = store.getUser(userId);
     if (!profile) return;
     this.createMatch(
-      { userId, deck: profile.deck, send: human.send },
-      { userId: null, deck: [...DEFAULT_DECK], send: noop },
+      { userId, deck: battleDeckOf(profile), send: human.send },
+      { userId: null, deck: botDeck(), send: noop },
     );
   }
 
@@ -88,7 +89,7 @@ export class GameManager {
     if (seatB.userId) this.userMatch.delete(seatB.userId);
   }
 
-  deploy(userId: string, cardId: string, x: number, y: number): void {
+  deploy(userId: string, cardId: string, x?: number, y?: number): void {
     const matchId = this.userMatch.get(userId);
     if (!matchId) return;
     this.matches.get(matchId)?.handleDeploy(userId, cardId, x, y);
@@ -116,7 +117,7 @@ export class GameManager {
       room = new BossRoom(clanId, (r) => this.bossRooms.delete(r.clanId));
       this.bossRooms.set(clanId, room);
     }
-    const res = room.join(userId, profile.nickname, profile.deck, send);
+    const res = room.join(userId, profile.nickname, battleDeckOf(profile), send);
     if (!res.ok) {
       send({ t: 'error', error: res.error ?? 'cannot join raid' });
       return;
@@ -124,7 +125,7 @@ export class GameManager {
     this.userBoss.set(userId, clanId);
   }
 
-  bossDeploy(userId: string, cardId: string, x: number, y: number): void {
+  bossDeploy(userId: string, cardId: string, x?: number, y?: number): void {
     const clanId = this.userBoss.get(userId);
     if (!clanId) return;
     this.bossRooms.get(clanId)?.deploy(userId, cardId, x, y);
@@ -145,8 +146,21 @@ export class GameManager {
   }
 }
 
+/** The hand a profile brings to battle: the trio in the cooldown model, the 8-deck otherwise. */
+function battleDeckOf(profile: PlayerProfile): string[] {
+  if (ACTIVE_BATTLE_CONFIG.economy === 'cooldown') {
+    return profile.trio?.length === TRIO_SIZE ? [...profile.trio] : [...DEFAULT_TRIO];
+  }
+  return [...profile.deck];
+}
+
+function botDeck(): string[] {
+  return ACTIVE_BATTLE_CONFIG.economy === 'cooldown' ? [...DEFAULT_TRIO] : [...DEFAULT_DECK];
+}
+
 function deckOf(userId: string): string[] {
-  return store.getUser(userId)?.deck ?? [...DEFAULT_DECK];
+  const user = store.getUser(userId);
+  return user ? battleDeckOf(user) : botDeck();
 }
 
 const noop: Sender = (_msg: ServerMessage) => {};

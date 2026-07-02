@@ -1,4 +1,5 @@
 import type { Side, TowerType } from './constants';
+import type { DeploymentMode, EconomyMode } from './battle-config';
 
 export type Language = 'en' | 'ru';
 
@@ -19,7 +20,10 @@ export interface PlayerProfile {
   gold: number;
   gems: number;
   xp: number; // account XP (from card upgrades) -> king level
-  deck: string[]; // 8 card ids
+  deck: string[]; // 8 card ids (legacy elixir model; also drives reward drops)
+  trio: string[]; // 3 active battle cards (cooldown model)
+  /** Starter boxes revealed during onboarding (>= STARTER_BOX_COUNT = done). */
+  starterBoxesOpened: number;
   cards: Record<string, CardState>; // owned cards (id -> level/count)
   clanId: string | null;
   createdAt: number;
@@ -61,16 +65,33 @@ export interface EntitySnapshot {
   color: number;
 }
 
+/** Which battle model produced a snapshot (drives the client's HUD branch). */
+export interface BattleModeInfo {
+  economy: EconomyMode;
+  deployment: DeploymentMode;
+}
+
+/** Recharge state of one card in the receiving player's trio (stable order). */
+export interface CardCooldown {
+  cardId: string;
+  remaining: number; // seconds until playable again (0 = ready)
+  total: number; // full recharge this card was set to (for overlay fills)
+}
+
 export interface BattleSnapshot {
   tick: number;
   timeLeft: number; // seconds remaining in the round
-  doubleElixir: boolean;
+  doubleElixir: boolean; // legacy name; mirrors finalPhase in the cooldown model
   yourSide: Side;
   elixir: { A: number; B: number };
-  hand: string[]; // your current 4-card hand
-  nextCard: string; // your next card to cycle in
+  hand: string[]; // your current 4-card hand (cooldown model: your trio)
+  nextCard: string; // your next card to cycle in (cooldown model: '')
   entities: EntitySnapshot[];
   score: { A: number; B: number }; // towers destroyed by each side
+  // --- Cooldown model additions (optional so stale clients keep parsing) ---
+  mode?: BattleModeInfo;
+  cooldowns?: CardCooldown[]; // your trio's recharge state
+  finalPhase?: boolean; // last minute: cooldowns tick twice as fast
 }
 
 export type MatchOutcome = 'win' | 'loss';
@@ -108,6 +129,9 @@ export interface BossSnapshot {
   yourElixir: number;
   hand: string[];
   nextCard: string;
+  // --- Cooldown model additions ---
+  mode?: BattleModeInfo;
+  cooldowns?: CardCooldown[];
 }
 
 export interface BossResult {

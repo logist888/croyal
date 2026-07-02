@@ -3,7 +3,7 @@
  */
 import {
   encode, decodeServer, type ClientMessage, type ServerMessage,
-  type PlayerProfile, type Clan,
+  type PlayerProfile, type Clan, type BattleModeInfo,
 } from '@croyal/shared';
 import { API_BASE, WS_BASE, state } from './state';
 
@@ -22,6 +22,7 @@ export interface AuthResponse {
   profile?: PlayerProfile;
   telegramId?: number;
   suggestedNickname?: string;
+  mode?: BattleModeInfo;
 }
 
 export const api = {
@@ -29,8 +30,10 @@ export const api = {
     req<AuthResponse>('/api/auth', { method: 'POST', body: JSON.stringify(body) }),
   register: (body: { initData?: string; devUser?: { id: number }; nickname: string; language: string }) =>
     req<{ token: string; profile: PlayerProfile }>('/api/register', { method: 'POST', body: JSON.stringify(body) }),
-  me: () => req<{ profile: PlayerProfile }>('/api/me'),
+  me: () => req<{ profile: PlayerProfile; mode?: BattleModeInfo }>('/api/me'),
   upgradeCard: (id: string) => req<{ profile: PlayerProfile }>(`/api/cards/${id}/upgrade`, { method: 'POST' }),
+  updateTrio: (trio: string[]) =>
+    req<{ profile: PlayerProfile }>('/api/trio', { method: 'POST', body: JSON.stringify({ trio }) }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

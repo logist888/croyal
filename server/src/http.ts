@@ -11,6 +11,12 @@ import {
 } from '@croyal/shared';
 import { authenticate } from './auth';
 import { store } from './store';
+import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
+
+/** Which battle core this server runs — lets the client pick the right HUD. */
+function battleMode() {
+  return { economy: ACTIVE_BATTLE_CONFIG.economy, deployment: ACTIVE_BATTLE_CONFIG.deployment };
+}
 
 function publicProfile(p: PlayerProfile) {
   return p; // MVP: return the full profile
@@ -55,7 +61,7 @@ export function createApp() {
     const existing = store.getUserByTelegram(auth.user.id);
     if (existing) {
       const token = store.createSession(existing.id);
-      res.json({ registered: true, token, profile: publicProfile(existing) });
+      res.json({ registered: true, token, profile: publicProfile(existing), mode: battleMode() });
       return;
     }
     res.json({ registered: false, telegramId: auth.user.id, suggestedNickname: auth.user.username ?? '' });
@@ -78,7 +84,7 @@ export function createApp() {
     try {
       const profile = store.createUser({ telegramId: auth.user.id, nickname, language: lang });
       const token = store.createSession(profile.id);
-      res.json({ token, profile: publicProfile(profile) });
+      res.json({ token, profile: publicProfile(profile), mode: battleMode() });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
     }
@@ -86,7 +92,18 @@ export function createApp() {
 
   app.get('/api/me', requireAuth, (req: AuthedRequest, res: Response) => {
     const user = store.getUser(req.userId!);
-    res.json({ profile: user ? publicProfile(user) : null });
+    res.json({ profile: user ? publicProfile(user) : null, mode: battleMode() });
+  });
+
+  // --- Battle trio: pick the 3 active cards (cooldown model) ---
+  app.post('/api/trio', requireAuth, (req: AuthedRequest, res: Response) => {
+    const { trio } = req.body ?? {};
+    try {
+      const profile = store.setTrio(req.userId!, trio);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
   });
 
   // --- Cards: upgrade ---

@@ -9,10 +9,12 @@ export type ClientMessage =
   | { t: 'auth'; token: string } // session token from REST /api/auth
   | { t: 'queue' } // join 1v1 matchmaking
   | { t: 'cancelQueue' }
-  | { t: 'deploy'; cardId: string; x: number; y: number } // play a card in battle
+  // Play a card. Coordinates are required for free-placement troops and for
+  // aimed spells; omitted for fixed-lane troops (the server picks the lane spawn).
+  | { t: 'deploy'; cardId: string; x?: number; y?: number }
   | { t: 'leaveMatch' }
   | { t: 'bossJoin'; clanId: string }
-  | { t: 'bossDeploy'; cardId: string; x: number; y: number }
+  | { t: 'bossDeploy'; cardId: string; x?: number; y?: number }
   | { t: 'bossLeave' }
   | { t: 'ping' };
 

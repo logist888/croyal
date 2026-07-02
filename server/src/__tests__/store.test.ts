@@ -7,11 +7,13 @@ function makeUser(store: Store, n: number) {
 }
 
 describe('user registration', () => {
-  it('creates a user with the default deck', () => {
+  it('creates a user with the default deck and battle trio', () => {
     const store = new Store();
     const u = makeUser(store, 1);
     expect(u.nickname).toBe('Player1');
     expect(u.deck.length).toBe(8);
+    expect(u.trio.length).toBe(3);
+    expect(u.starterBoxesOpened).toBe(0);
   });
 
   it('rejects an invalid nickname at creation', () => {
@@ -27,6 +29,23 @@ describe('user registration', () => {
     const updated = store.updateUser(u.id, { trophies: 50 });
     expect(updated.trophies).toBe(50);
     expect(updated.nickname).toBe('Player2');
+  });
+});
+
+describe('battle trio', () => {
+  it('accepts exactly 3 distinct owned cards', () => {
+    const store = new Store();
+    const u = makeUser(store, 1);
+    const updated = store.setTrio(u.id, ['ratpack', 'blademaster', 'meteor']);
+    expect(updated.trio).toEqual(['ratpack', 'blademaster', 'meteor']);
+  });
+
+  it('rejects wrong sizes, duplicates and unknown cards', () => {
+    const store = new Store();
+    const u = makeUser(store, 1);
+    expect(() => store.setTrio(u.id, ['footman', 'archers'])).toThrow(/exactly 3/i);
+    expect(() => store.setTrio(u.id, ['footman', 'footman', 'archers'])).toThrow(/unique/i);
+    expect(() => store.setTrio(u.id, ['footman', 'archers', 'dragon'])).toThrow(/not owned/i);
   });
 });
 

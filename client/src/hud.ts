@@ -1,7 +1,7 @@
 /**
  * Shared HUD helpers for battle & boss screens.
  */
-import { ARENA_WIDTH, ARENA_HEIGHT, ELIXIR_MAX, getCard } from '@croyal/shared';
+import { ARENA_WIDTH, ARENA_HEIGHT, ELIXIR_MAX, getCard, type CardCooldown } from '@croyal/shared';
 import { hex, escapeHtml } from './ui';
 import { cardName } from './i18n';
 import { cardImageUrl } from './assets';
@@ -79,6 +79,75 @@ export function buildHand(container: HTMLElement, handlers: HandHandlers = {}): 
     },
   };
   return api;
+}
+
+// --- Trio hand (cooldown battle model): 3 big cards, each with its own recharge ---
+
+export interface TrioUI {
+  /** Update the recharge overlays from the latest snapshot. */
+  setCooldowns(cds: CardCooldown[]): void;
+  /** Highlight the spell that is in aim mode (null clears). */
+  setAiming(cardId: string | null): void;
+}
+
+export interface TrioHandlers {
+  /** Tap on a READY card: troops play instantly, spells enter aim mode. */
+  onPlay: (cardId: string) => void;
+}
+
+export function buildTrioHand(container: HTMLElement, handlers: TrioHandlers): TrioUI {
+  container.classList.add('trio');
+  let aiming: string | null = null;
+  const cells = new Map<string, HTMLElement>();
+
+  function buildCell(cardId: string): HTMLElement {
+    const c = getCard(cardId)!;
+    const cell = document.createElement('div');
+    const art = cardImageUrl(cardId);
+    cell.className = 'handcard triocard' + (art ? ' has-art' : '');
+    if (art) {
+      cell.style.backgroundImage = `url(${art})`;
+    } else {
+      cell.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
+      cell.innerHTML = `<span class="triocard-name">${escapeHtml(cardName(cardId))}</span>`;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'cd-overlay';
+    const num = document.createElement('div');
+    num.className = 'cd-num';
+    cell.appendChild(overlay);
+    cell.appendChild(num);
+    cell.onclick = () => {
+      if (cell.classList.contains('cooling')) return;
+      handlers.onPlay(cardId);
+    };
+    container.appendChild(cell);
+    return cell;
+  }
+
+  return {
+    setCooldowns(cds: CardCooldown[]) {
+      for (const cd of cds) {
+        let cell = cells.get(cd.cardId);
+        if (!cell) {
+          cell = buildCell(cd.cardId);
+          cells.set(cd.cardId, cell);
+        }
+        const cooling = cd.remaining > 0.001;
+        cell.classList.toggle('cooling', cooling);
+        cell.classList.toggle('aiming', aiming === cd.cardId);
+        const overlay = cell.querySelector<HTMLDivElement>('.cd-overlay')!;
+        const num = cell.querySelector<HTMLDivElement>('.cd-num')!;
+        const frac = cooling && cd.total > 0 ? Math.min(1, cd.remaining / cd.total) : 0;
+        overlay.style.height = `${Math.round(frac * 100)}%`;
+        num.textContent = cooling ? String(Math.ceil(cd.remaining)) : '';
+      }
+    },
+    setAiming(cardId: string | null) {
+      aiming = cardId;
+      for (const [id, cell] of cells) cell.classList.toggle('aiming', aiming === id);
+    },
+  };
 }
 
 export function elixirBarHtml(): string {

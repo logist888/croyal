@@ -1,16 +1,23 @@
 /**
  * Authoritative 1v1 battle simulation. Deterministic, server-side only.
  * The client never runs this for truth — it only renders snapshots.
+ *
+ * Two battle models live side-by-side, selected by BattleConfig (GDD
+ * reversibility): the legacy elixir/free-placement core and the new
+ * cooldown/fixed-lane core (per-card recharge, auto-march lanes, intercept).
  */
 import {
-  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, BRIDGE_X,
+  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HALF_HEIGHT, BRIDGE_X,
   ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
-  ROUND_SECONDS, DOUBLE_ELIXIR_LAST_SECONDS,
   KING_TOWER, PRINCESS_TOWER, TOWER_POSITIONS, otherSide,
+  LANE_SPAWN, laneTargetTower, ENGAGE_X_WINDOW, UNIT_BODY_RADIUS, towerBodyRadius,
+  DEFAULT_BATTLE_CONFIG,
   CARDS, getCard, levelStatMultiplier, canDeployTroop,
-  type Side, type TowerType, type CardDef, type TargetKind,
-  type BattleSnapshot, type EntitySnapshot, type MatchResult,
+  type Side, type TowerType, type CardDef, type TargetKind, type BattleConfig,
+  type BattleSnapshot, type EntitySnapshot, type MatchResult, type CardCooldown,
 } from '@croyal/shared';
+
+type MarchState = 'march' | 'intercept' | 'engage';
 
 interface Entity {
   id: string;
@@ -35,6 +42,7 @@ interface Entity {
   targetId: string | null;
   lifetime: number; // seconds remaining, Infinity for permanent
   kingActivated: boolean;
+  marchState: MarchState; // fixed-lane units only; 'march' otherwise
 }
 
 interface DeployResult {
@@ -54,7 +62,7 @@ function crossesRiver(y1: number, y2: number): boolean {
 
 export class Simulation {
   tick = 0;
-  timeLeft = ROUND_SECONDS;
+  timeLeft: number;
   entities = new Map<string, Entity>();
   result: MatchResult | null = null;
   winnerSide: Side | null = null;
@@ -62,6 +70,10 @@ export class Simulation {
 
   private elixir: Record<Side, number> = { A: ELIXIR_START, B: ELIXIR_START };
   private queue: Record<Side, string[]>;
+  /** Per-card recharge timers (cooldown economy only). */
+  private cooldowns: Record<Side, Map<string, number>> = { A: new Map(), B: new Map() };
+  /** threat entity id -> interceptor entity id (fixed-lane intercept rule). */
+  private interceptAssignments = new Map<string, string>();
   private seq = 0;
   private towersDestroyed: Record<Side, number> = { A: 0, B: 0 };
   private towerDamage: Record<Side, number> = { A: 0, B: 0 };
@@ -75,8 +87,19 @@ export class Simulation {
     private fallbackSeed: number,
     levelsA: Record<string, number> = {},
     levelsB: Record<string, number> = {},
+    private config: BattleConfig = DEFAULT_BATTLE_CONFIG,
+    private cooldownMult: Record<Side, number> = { A: 1, B: 1 },
   ) {
-    this.queue = { A: shuffle(deckA, fallbackSeed), B: shuffle(deckB, fallbackSeed + 1) };
+    this.timeLeft = config.roundSeconds;
+    if (config.economy === 'cooldown') {
+      // The trio is the whole hand — keep its order stable for the HUD.
+      this.queue = { A: [...deckA], B: [...deckB] };
+      for (const s of ['A', 'B'] as Side[]) {
+        for (const id of this.queue[s]) this.cooldowns[s].set(id, 0);
+      }
+    } else {
+      this.queue = { A: shuffle(deckA, fallbackSeed), B: shuffle(deckB, fallbackSeed + 1) };
+    }
     this.levels = { A: levelsA, B: levelsB };
     this.spawnTowers('A');
     this.spawnTowers('B');
@@ -118,6 +141,7 @@ export class Simulation {
         targetId: null,
         lifetime: Infinity,
         kingActivated: tt !== 'king', // princess towers are always active
+        marchState: 'march',
       });
     }
   }
@@ -129,18 +153,35 @@ export class Simulation {
     return undefined;
   }
 
-  // --- Elixir / hand ---
+  // --- Economy (elixir OR per-card cooldowns) / hand ---
+  finalPhase(): boolean {
+    return this.timeLeft <= this.config.finalPhaseLastSeconds;
+  }
+
+  get battleConfig(): BattleConfig {
+    return this.config;
+  }
+
   private elixirRate(): number {
-    const doubling = this.timeLeft <= DOUBLE_ELIXIR_LAST_SECONDS;
-    return (doubling ? 2 : 1) / ELIXIR_REGEN_SECONDS; // elixir per second
+    return (this.finalPhase() ? 2 : 1) / ELIXIR_REGEN_SECONDS; // elixir per second
   }
 
   private hand(side: Side): string[] {
-    return this.queue[side].slice(0, 4);
+    return this.config.economy === 'cooldown' ? [...this.queue[side]] : this.queue[side].slice(0, 4);
   }
 
   private nextCardOf(side: Side): string {
-    return this.queue[side][4];
+    return this.config.economy === 'cooldown' ? '' : this.queue[side][4];
+  }
+
+  /** Cards playable right now (off cooldown). Used by the bot and tests. */
+  readyCards(side: Side): string[] {
+    if (this.config.economy !== 'cooldown') return this.hand(side);
+    return this.queue[side].filter((id) => (this.cooldowns[side].get(id) ?? 0) <= 0);
+  }
+
+  cooldownOf(side: Side, cardId: string): number {
+    return this.cooldowns[side].get(cardId) ?? 0;
   }
 
   /** Whether a position is a legal deploy spot for `side` (shared client/server rule). */
@@ -152,27 +193,52 @@ export class Simulation {
     });
   }
 
-  deploy(side: Side, cardId: string, x: number, y: number): DeployResult {
+  deploy(side: Side, cardId: string, x?: number, y?: number): DeployResult {
     if (this.result) return { ok: false, error: 'match over' };
     const card = getCard(cardId);
     if (!card) return { ok: false, error: 'unknown card' };
     if (!this.hand(side).includes(cardId)) return { ok: false, error: 'card not in hand' };
-    if (this.elixir[side] < card.cost) return { ok: false, error: 'not enough elixir' };
 
-    if (card.type === 'spell') {
-      // spells can target anywhere on the field
-      if (x < 0 || x > ARENA_WIDTH || y < 0 || y > ARENA_HEIGHT) return { ok: false, error: 'out of bounds' };
-    } else if (!this.canDeployAt(side, x, y)) {
-      return { ok: false, error: 'illegal deploy zone' };
+    // Economy gate
+    if (this.config.economy === 'cooldown') {
+      if ((this.cooldowns[side].get(cardId) ?? 0) > 0) return { ok: false, error: 'card on cooldown' };
+    } else if (this.elixir[side] < card.cost) {
+      return { ok: false, error: 'not enough elixir' };
     }
 
-    this.elixir[side] -= card.cost;
-    this.cycle(side, cardId);
+    // Placement gate
+    let px: number;
+    let py: number;
+    if (card.type === 'spell') {
+      // Spells are aimed by a tap in both deployment modes (free aim).
+      if (x === undefined || y === undefined) return { ok: false, error: 'spell needs a target' };
+      if (x < 0 || x > ARENA_WIDTH || y < 0 || y > ARENA_HEIGHT) return { ok: false, error: 'out of bounds' };
+      px = x;
+      py = y;
+    } else if (this.config.deployment === 'fixed-lane') {
+      // The player only chooses WHICH card and WHEN — never where.
+      if (x !== undefined || y !== undefined) return { ok: false, error: 'fixed-lane: no placement' };
+      px = LANE_SPAWN[side].x;
+      py = LANE_SPAWN[side].y;
+    } else {
+      if (x === undefined || y === undefined) return { ok: false, error: 'placement required' };
+      if (!this.canDeployAt(side, x, y)) return { ok: false, error: 'illegal deploy zone' };
+      px = x;
+      py = y;
+    }
+
+    // Pay
+    if (this.config.economy === 'cooldown') {
+      this.cooldowns[side].set(cardId, card.cooldownSec * this.cooldownMult[side]);
+    } else {
+      this.elixir[side] -= card.cost;
+      this.cycle(side, cardId);
+    }
 
     if (card.type === 'spell') {
-      this.castSpell(side, card, x, y);
+      this.castSpell(side, card, px, py);
     } else {
-      this.spawnCard(side, card, x, y);
+      this.spawnCard(side, card, px, py);
     }
     return { ok: true };
   }
@@ -218,6 +284,7 @@ export class Simulation {
         targetId: null,
         lifetime: card.lifetimeSeconds ?? Infinity,
         kingActivated: true,
+        marchState: 'march',
       });
     }
   }
@@ -241,16 +308,43 @@ export class Simulation {
     return true;
   }
 
+  /** Body radius used for attack reach and "can't stand inside a tower". */
+  private bodyRadius(target: Entity): number {
+    if (target.kind === 'tower') return towerBodyRadius(target.towerType!);
+    return UNIT_BODY_RADIUS;
+  }
+
+  private reachOf(attacker: Entity, target: Entity): number {
+    return attacker.range + this.bodyRadius(target);
+  }
+
+  /**
+   * Static defenders (towers and buildings) re-scan every tick and only shoot
+   * things that move — never each other's towers across the map.
+   */
+  private acquireDefenderTarget(e: Entity): Entity | null {
+    const enemy = otherSide(e.side);
+    let best: Entity | null = null;
+    let bestD = Infinity;
+    for (const t of this.entities.values()) {
+      if (t.side !== enemy || t.hp <= 0 || t.kind === 'tower') continue;
+      if (!this.canHit(e, t)) continue;
+      const d = dist(e.x, e.y, t.x, t.y);
+      if (d <= this.reachOf(e, t) && d < bestD) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+
+  /** Free-placement mobile units: nearest enemy entity of any kind. */
   private acquireTarget(e: Entity): Entity | null {
     const enemy = otherSide(e.side);
     let best: Entity | null = null;
     let bestD = Infinity;
     for (const t of this.entities.values()) {
       if (t.side !== enemy || t.hp <= 0) continue;
-      // inactive king tower is not targetable until it activates (acts like a wall but un-aggroable)
-      if (t.kind === 'tower' && t.towerType === 'king' && !t.kingActivated) {
-        // still targetable structurally — towers are valid targets; activation only governs attacking
-      }
       if (!this.canHit(e, t)) continue;
       const d = dist(e.x, e.y, t.x, t.y);
       if (d < bestD) {
@@ -273,14 +367,14 @@ export class Simulation {
         this.onTowerDestroyed(target, bySide);
       }
     } else if (target.hp <= 0) {
-      this.entities.delete(idKey(target));
+      this.entities.delete(target.id);
     }
   }
 
   private onTowerDestroyed(tower: Entity, bySide: Side): void {
     this.towersDestroyed[bySide] += 1;
     if (this.firstTowerTick[bySide] === null) this.firstTowerTick[bySide] = this.tick;
-    this.entities.delete(idKey(tower));
+    this.entities.delete(tower.id);
 
     if (tower.towerType === 'king') {
       // king down -> immediate win
@@ -292,14 +386,20 @@ export class Simulation {
     if (king) king.kingActivated = true;
   }
 
-  private moveToward(e: Entity, tx: number, ty: number, dt: number): void {
+  /**
+   * Move toward a goal. Ground units route across the river via a bridge —
+   * the crossing waypoint sits just BEYOND the water so units never stall on
+   * the river line. While inside the river band they are clamped to the
+   * bridge deck (hard rule: no walking on water).
+   */
+  private moveToward(e: Entity, tx: number, ty: number, dt: number, preferredBridgeX?: number): void {
     let gx = tx;
     let gy = ty;
     if (!e.flying && crossesRiver(e.y, ty)) {
-      // ground units must use a bridge to cross the river
-      const bridge = BRIDGE_X.reduce((a, b) => (Math.abs(b - e.x) < Math.abs(a - e.x) ? b : a), BRIDGE_X[0]);
+      const bridge = preferredBridgeX
+        ?? BRIDGE_X.reduce((a, b) => (Math.abs(b - e.x) < Math.abs(a - e.x) ? b : a), BRIDGE_X[0]);
       gx = bridge;
-      gy = RIVER_Y;
+      gy = ty < e.y ? RIVER_Y - (RIVER_HALF_HEIGHT + 0.3) : RIVER_Y + (RIVER_HALF_HEIGHT + 0.3);
     }
     const d = dist(e.x, e.y, gx, gy);
     const step = e.moveSpeed * dt;
@@ -310,6 +410,153 @@ export class Simulation {
       e.x += ((gx - e.x) / d) * step;
       e.y += ((gy - e.y) / d) * step;
     }
+    this.clampCollisions(e);
+  }
+
+  /** Hard collision rules: no water off-bridge, never stand inside a tower. */
+  private clampCollisions(e: Entity): void {
+    if (e.flying) return;
+    if (Math.abs(e.y - RIVER_Y) <= RIVER_HALF_HEIGHT + 0.05) {
+      const bridge = BRIDGE_X.reduce((a, b) => (Math.abs(b - e.x) < Math.abs(a - e.x) ? b : a), BRIDGE_X[0]);
+      e.x = bridge;
+    }
+    for (const t of this.entities.values()) {
+      if (t.kind !== 'tower' || t.hp <= 0) continue;
+      const r = this.bodyRadius(t);
+      const d = dist(e.x, e.y, t.x, t.y);
+      if (d >= r) continue;
+      if (d === 0) {
+        e.y = t.y + r * (e.side === 'A' ? 1 : -1);
+      } else {
+        e.x = t.x + ((e.x - t.x) / d) * r;
+        e.y = t.y + ((e.y - t.y) / d) * r;
+      }
+    }
+  }
+
+  // --- Fixed-lane march / intercept ---
+
+  private onHalf(e: { y: number }, side: Side): boolean {
+    return side === 'A' ? e.y > RIVER_Y : e.y < RIVER_Y;
+  }
+
+  /**
+   * The intercept rule (GDD): for each enemy unit that stepped onto my half,
+   * exactly ONE of my marching units — the nearest eligible — peels off to
+   * fight it; everyone else keeps marching. When either dies, the survivor
+   * returns to the march.
+   */
+  private assignInterceptors(): void {
+    for (const [threatId, interceptorId] of this.interceptAssignments) {
+      const threat = this.entities.get(threatId);
+      const interceptor = this.entities.get(interceptorId);
+      if (!threat || threat.hp <= 0 || !interceptor || interceptor.hp <= 0) {
+        this.interceptAssignments.delete(threatId);
+        if (interceptor && interceptor.hp > 0 && interceptor.marchState === 'intercept') {
+          interceptor.marchState = 'march';
+          interceptor.targetId = null;
+        }
+      }
+    }
+
+    for (const side of ['A', 'B'] as Side[]) {
+      const enemy = otherSide(side);
+      for (const threat of this.entities.values()) {
+        if (threat.side !== enemy || threat.kind !== 'unit' || threat.hp <= 0) continue;
+        if (!this.onHalf(threat, side)) continue;
+        if (this.interceptAssignments.has(threat.id)) continue;
+
+        let best: Entity | null = null;
+        let bestD = Infinity;
+        for (const u of this.entities.values()) {
+          if (u.side !== side || u.kind !== 'unit' || u.hp <= 0) continue;
+          if (u.marchState !== 'march' || u.targetsBuildingsOnly) continue;
+          if (!this.onHalf(u, side)) continue; // defend from your own half
+          if (!this.canHit(u, threat)) continue;
+          const d = dist(u.x, u.y, threat.x, threat.y);
+          if (d < bestD) {
+            bestD = d;
+            best = u;
+          }
+        }
+        if (best) {
+          this.interceptAssignments.set(threat.id, best.id);
+          best.marchState = 'intercept';
+          best.targetId = threat.id;
+        }
+      }
+    }
+  }
+
+  /** The tower a side's lane march heads for: lane princess, then the king. */
+  private structuralTarget(side: Side): Entity | null {
+    const { enemySide, towerType } = laneTargetTower(side);
+    const princess = this.getTower(enemySide, towerType);
+    if (princess) return princess;
+    const king = this.getTower(enemySide, 'king');
+    if (king) return king;
+    const otherPrincess = towerType === 'princessRight' ? 'princessLeft' : 'princessRight';
+    return this.getTower(enemySide, otherPrincess) ?? null;
+  }
+
+  /** Nearest enemy unit/building already within fighting reach of the lane. */
+  private findEngagement(e: Entity): Entity | null {
+    const enemy = otherSide(e.side);
+    let best: Entity | null = null;
+    let bestD = Infinity;
+    for (const t of this.entities.values()) {
+      if (t.side !== enemy || t.hp <= 0 || t.kind === 'tower') continue;
+      if (!this.canHit(e, t)) continue;
+      if (Math.abs(t.x - e.x) > ENGAGE_X_WINDOW) continue;
+      const d = dist(e.x, e.y, t.x, t.y);
+      if (d <= this.reachOf(e, t) + 0.4 && d < bestD) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+
+  private attackOrChase(e: Entity, target: Entity, dt: number): void {
+    const d = dist(e.x, e.y, target.x, target.y);
+    if (d <= this.reachOf(e, target)) {
+      if (e.attackCd <= 0 && e.damage > 0) {
+        this.attack(e, target);
+        e.attackCd = e.hitSpeed;
+      }
+    } else if (e.moveSpeed > 0) {
+      this.moveToward(e, target.x, target.y, dt, LANE_SPAWN[e.side].x);
+    }
+  }
+
+  private stepLaneUnit(e: Entity, dt: number): void {
+    // Keep fighting an assigned/engaged enemy while it lives.
+    if (e.marchState === 'intercept' || e.marchState === 'engage') {
+      const target = e.targetId ? this.entities.get(e.targetId) : undefined;
+      if (target && target.hp > 0 && this.canHit(e, target)) {
+        this.attackOrChase(e, target, dt);
+        return;
+      }
+      e.marchState = 'march';
+      e.targetId = null;
+    }
+
+    // Natural contact fighting on the lane (melee blocking, ranged trades).
+    if (!e.targetsBuildingsOnly) {
+      const foe = this.findEngagement(e);
+      if (foe) {
+        e.marchState = 'engage';
+        e.targetId = foe.id;
+        this.attackOrChase(e, foe, dt);
+        return;
+      }
+    }
+
+    // March: own bridge -> lane princess -> king.
+    const structural = this.structuralTarget(e.side);
+    if (!structural) return;
+    e.targetId = structural.id;
+    this.attackOrChase(e, structural, dt);
   }
 
   private stepEntity(e: Entity, dt: number): void {
@@ -318,7 +565,7 @@ export class Simulation {
       e.lifetime -= dt;
       if (e.lifetime <= 0) {
         e.hp = 0;
-        this.entities.delete(idKey(e));
+        this.entities.delete(e.id);
         return;
       }
     }
@@ -327,6 +574,24 @@ export class Simulation {
     // towers: inactive king does nothing
     if (e.kind === 'tower' && !e.kingActivated) return;
 
+    // Static defenders re-scan every tick (fix: they used to lock a distant
+    // enemy tower forever and never fire at approaching units).
+    if (e.kind === 'tower' || e.kind === 'building') {
+      const target = this.acquireDefenderTarget(e);
+      e.targetId = target ? target.id : null;
+      if (target && e.attackCd <= 0 && e.damage > 0) {
+        this.attack(e, target);
+        e.attackCd = e.hitSpeed;
+      }
+      return;
+    }
+
+    if (this.config.deployment === 'fixed-lane') {
+      this.stepLaneUnit(e, dt);
+      return;
+    }
+
+    // Free-placement units: nearest-entity lock (legacy behavior).
     let target: Entity | null | undefined = e.targetId ? this.entities.get(e.targetId) : null;
     if (!target || target.hp <= 0 || !this.canHit(e, target)) {
       target = this.acquireTarget(e);
@@ -335,8 +600,7 @@ export class Simulation {
     if (!target) return;
 
     const d = dist(e.x, e.y, target.x, target.y);
-    const reach = e.range + 0.5; // small body radius tolerance
-    if (d <= reach) {
+    if (d <= this.reachOf(e, target)) {
       if (e.attackCd <= 0 && e.damage > 0) {
         this.attack(e, target);
         e.attackCd = e.hitSpeed;
@@ -364,11 +628,24 @@ export class Simulation {
     this.tick += 1;
     this.timeLeft = Math.max(0, this.timeLeft - dt);
 
-    // elixir regen
-    const rate = this.elixirRate();
-    for (const s of ['A', 'B'] as Side[]) {
-      this.elixir[s] = Math.min(ELIXIR_MAX, this.elixir[s] + rate * dt);
+    if (this.config.economy === 'cooldown') {
+      // Final phase: recharges tick faster (0.5 multiplier = twice as fast),
+      // including cooldowns already running.
+      const speed = this.finalPhase() ? 1 / this.config.finalCooldownMultiplier : 1;
+      for (const s of ['A', 'B'] as Side[]) {
+        const map = this.cooldowns[s];
+        for (const [id, v] of map) {
+          if (v > 0) map.set(id, Math.max(0, v - dt * speed));
+        }
+      }
+    } else {
+      const rate = this.elixirRate();
+      for (const s of ['A', 'B'] as Side[]) {
+        this.elixir[s] = Math.min(ELIXIR_MAX, this.elixir[s] + rate * dt);
+      }
     }
+
+    if (this.config.deployment === 'fixed-lane') this.assignInterceptors();
 
     // step a stable snapshot of entities (towers + units)
     for (const e of [...this.entities.values()]) {
@@ -437,16 +714,27 @@ export class Simulation {
         color: e.color,
       });
     }
+    let cooldowns: CardCooldown[] | undefined;
+    if (this.config.economy === 'cooldown') {
+      cooldowns = this.queue[forSide].map((id) => ({
+        cardId: id,
+        remaining: round2(this.cooldowns[forSide].get(id) ?? 0),
+        total: round2((getCard(id)?.cooldownSec ?? 0) * this.cooldownMult[forSide]),
+      }));
+    }
     return {
       tick: this.tick,
       timeLeft: Math.ceil(this.timeLeft),
-      doubleElixir: this.timeLeft <= DOUBLE_ELIXIR_LAST_SECONDS,
+      doubleElixir: this.finalPhase(),
       yourSide: forSide,
       elixir: { A: round2(this.elixir.A), B: round2(this.elixir.B) },
       hand: this.hand(forSide),
       nextCard: this.nextCardOf(forSide),
       entities,
       score: { A: this.towersDestroyed.A, B: this.towersDestroyed.B },
+      mode: { economy: this.config.economy, deployment: this.config.deployment },
+      cooldowns,
+      finalPhase: this.finalPhase(),
     };
   }
 
@@ -466,12 +754,6 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
-}
-function idKey(e: Entity): string {
-  return e.id;
-}
-function targetKey(e: Entity): string {
-  return e.id;
 }
 
 /** Deterministic shuffle (mulberry32) so matches replay identically. */
