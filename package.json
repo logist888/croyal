@@ -12,6 +12,8 @@
   "scripts": {
     "backup": "bash scripts/backup.sh",
     "slice": "node scripts/slice-art.mjs",
+    "art": "node scripts/gen-art.mjs",
+    "art:plan": "node scripts/gen-art.mjs --dry-run",
     "dev": "npm run dev --workspace server & npm run dev --workspace client",
     "dev:server": "npm run dev --workspace server",
     "dev:client": "npm run dev --workspace client",
@@ -24,6 +26,7 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "jimp": "^0.22.12"
+    "jimp": "^0.22.12",
+    "undici": "^8.6.0"
   }
 }

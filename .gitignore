@@ -9,6 +9,9 @@ npm-debug.log*
 # Local backups are machine-local rotating snapshots (see docs/BACKUP.md)
 backups/
 
+# Generated art contact sheet (node scripts/gen-art.mjs --sheet)
+art/review.html
+
 # Editor / OS
 .DS_Store
 .idea/
