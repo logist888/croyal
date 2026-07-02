@@ -91,15 +91,19 @@ class FieldScene extends Phaser.Scene {
   }
 
   /**
-   * Unit art arrives as 4x4 sprite-sheet grids; drawing the whole grid made
-   * units render as a cluster of tiny frames. Re-register each sheet with its
-   * frame size so the field can draw a single frame.
+   * Some unit art arrives as 4x4 sprite-sheet grids; drawing the whole grid
+   * made units render as a cluster of tiny frames. Re-register those sheets
+   * with their frame size so the field draws a single frame. Heuristic: the
+   * art pipeline's single-frame cutouts are square (128x128) — only clearly
+   * NON-square images are treated as grids.
    */
   private sliceUnitSheets() {
     for (const { key } of this.loadList) {
       if (!key.startsWith('unit:') || !this.textures.exists(key)) continue;
       const src = this.textures.get(key).getSourceImage() as HTMLImageElement;
       if (!src.width || !src.height) continue;
+      const aspect = src.width / src.height;
+      if (aspect > 0.85 && aspect < 1.18) continue; // square-ish: a single frame
       const sheetKey = `${key}:sheet`;
       if (this.textures.exists(sheetKey)) continue;
       this.textures.addSpriteSheet(sheetKey, src as unknown as HTMLImageElement, {

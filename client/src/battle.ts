@@ -152,6 +152,9 @@ export async function startBattle(nav: Nav): Promise<void> {
 
   function onSnapshot(root: HTMLElement, snap: BattleSnapshot) {
     yourSide = snap.yourSide;
+    // The authoritative mode rides on every snapshot — keep the app state in
+    // sync so post-battle screens are correct even after a server mode flip.
+    if (snap.mode) state.mode = snap.mode;
     if (field) field.setFlip(yourSide === 'B');
     field?.render(snap.entities);
     if (snap.events?.length) field?.addEvents(snap.events);

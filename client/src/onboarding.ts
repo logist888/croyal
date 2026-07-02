@@ -64,11 +64,13 @@ export function renderOnboarding(nav: Nav): void {
               const res = await api.openStarterBox();
               state.profile = res.profile;
               haptic('success');
-              render();
             } catch {
+              // Stale profile (e.g. boxes opened from another device): pull
+              // the fresh one so the gate can't wedge on a permanent 400.
               haptic('error');
-              render();
+              try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
             }
+            render();
           };
         }
       }
