@@ -63,6 +63,19 @@ export interface EntitySnapshot {
   maxHp: number;
   flying?: boolean;
   color: number;
+  /** Active status kinds (slow|root|stun|rage|shield|poison); omitted when none. */
+  statuses?: string[];
+}
+
+/** A lingering spell area (poison / slow) rendered as a translucent circle. */
+export interface ZoneSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  status: 'poison' | 'slow';
+  color: number;
+  remaining: number;
 }
 
 /** Which battle model produced a snapshot (drives the client's HUD branch). */
@@ -92,6 +105,8 @@ export interface AttackEvent {
   toY: number;
   ranged: boolean; // draw a projectile from -> to
   radius?: number; // spell AoE radius (tiles)
+  /** Special FX coloring for mechanic events. */
+  effect?: 'heal' | 'chain' | 'knockback' | 'spawn';
 }
 
 export interface BattleSnapshot {
@@ -109,6 +124,7 @@ export interface BattleSnapshot {
   cooldowns?: CardCooldown[]; // your trio's recharge state
   finalPhase?: boolean; // last minute: cooldowns tick twice as fast
   events?: AttackEvent[]; // combat FX since the previous snapshot
+  zones?: ZoneSnapshot[]; // lingering spell areas (poison/slow)
 }
 
 export type MatchOutcome = 'win' | 'loss';

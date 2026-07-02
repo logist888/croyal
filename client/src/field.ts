@@ -7,9 +7,19 @@
  */
 import Phaser from 'phaser';
 import {
-  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, BRIDGE_X, type EntitySnapshot, type AttackEvent,
+  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, BRIDGE_X,
+  type EntitySnapshot, type AttackEvent, type ZoneSnapshot,
 } from '@croyal/shared';
 import { fieldLoadList, arenaImageUrl } from './assets';
+
+/** Sprite tint per status (priority order — first present wins). */
+const STATUS_TINTS: Array<[string, number]> = [
+  ['stun', 0xaad4ff],
+  ['root', 0xaad4ff],
+  ['slow', 0x74b9ff],
+  ['poison', 0x81c784],
+  ['rage', 0xffa726],
+];
 
 /** Visual FX state (tile coords; converted to px flip-aware at draw time). */
 interface Projectile { x0: number; y0: number; x1: number; y1: number; t: number; dur: number; color: number }
@@ -51,6 +61,8 @@ class FieldScene extends Phaser.Scene {
   private projectiles: Projectile[] = [];
   private particles: Particle[] = [];
   private rings: SpellRing[] = [];
+  private zones: ZoneSnapshot[] = [];
+  private zonePulse = 0;
   private fastPhase = false;
   private flip = false;
   private w = 0;
@@ -126,13 +138,27 @@ class FieldScene extends Phaser.Scene {
     this.fastPhase = on;
   }
 
+  setZones(zones: ZoneSnapshot[]) {
+    this.zones = zones;
+  }
+
   /** Queue combat FX from a snapshot (projectiles, impacts, spell rings). */
   addEvents(events: AttackEvent[]) {
     for (const ev of events) {
-      const color = ev.side === 'A' ? 0xbce8ff : 0xffb3a7;
+      let color = ev.side === 'A' ? 0xbce8ff : 0xffb3a7;
+      if (ev.effect === 'heal') color = 0x8bf78b;
+      else if (ev.effect === 'chain') color = 0xfff176;
       if (ev.kind === 'spell') {
         this.rings.push({ x: ev.toX, y: ev.toY, radius: ev.radius ?? 2, t: 0, dur: 0.45 });
         this.burst(ev.toX, ev.toY, 0xffc46b, 10);
+        continue;
+      }
+      if (ev.effect === 'heal') {
+        this.burst(ev.toX, ev.toY, color, 5);
+        continue; // green sparkles only — no projectile spam from auras
+      }
+      if (ev.effect === 'spawn') {
+        this.rings.push({ x: ev.toX, y: ev.toY, radius: 1.2, t: 0, dur: 0.3 });
         continue;
       }
       if (ev.ranged) {
@@ -210,6 +236,15 @@ class FieldScene extends Phaser.Scene {
     // so movement looks continuous instead of snapping 10 times a second.
     const lerpK = 1 - Math.exp(-deltaMs / 90);
 
+    // Lingering spell zones (poison/slow) under the sprites, gently pulsing.
+    this.zonePulse += dt;
+    for (const z of this.zones) {
+      const { px, py } = this.toPx(z.x, z.y);
+      const r = z.radius * sx * (1 + 0.03 * Math.sin(this.zonePulse * 4));
+      this.fxUnder.fillStyle(z.color, 0.14).fillCircle(px, py, r);
+      this.fxUnder.lineStyle(2, z.color, 0.5).strokeCircle(px, py, r);
+    }
+
     for (const e of this.entities) {
       seen.add(e.id);
       let disp = this.display.get(e.id);
@@ -236,11 +271,22 @@ class FieldScene extends Phaser.Scene {
         }
         img.setScale(scale).setPosition(px, py).setDepth(py).setVisible(true);
         if (e.kind !== 'tower') img.setFlipX(this.flip ? e.side === 'A' : e.side === 'B');
+        // Status tint (first matching by priority) + gold shield arc.
+        const tint = e.statuses?.length ? STATUS_TINTS.find(([k]) => e.statuses!.includes(k)) : undefined;
+        if (tint) img.setTint(tint[1]);
+        else img.clearTint();
+        if (e.statuses?.includes('shield')) {
+          g.lineStyle(2.5, 0xffd54a, 0.9).strokeCircle(px, py, box * 0.55);
+        }
         this.hpBar(px, py - box / 2 - 7, box * 0.8, e, e.kind === 'tower' && e.towerType !== 'king');
       } else {
         const dead = this.sprites.get(e.id);
         if (dead) { dead.destroy(); this.sprites.delete(e.id); }
         this.drawShape(px, py, sx, e);
+        // Placeholder shapes get a status ring instead of a tint.
+        const tint = e.statuses?.length ? STATUS_TINTS.find(([k]) => e.statuses!.includes(k)) : undefined;
+        if (tint) g.lineStyle(2.5, tint[1], 0.9).strokeCircle(px, py, sx * 0.8);
+        if (e.statuses?.includes('shield')) g.lineStyle(2.5, 0xffd54a, 0.9).strokeCircle(px, py, sx * 0.95);
       }
 
       if (e.kind === 'tower') this.towerLabel(e, px, py - (boxTiles(e) * sx) / 2 - 9);
@@ -428,6 +474,7 @@ export class GameField {
   render(entities: EntitySnapshot[]) { this.scene?.setData2(entities, this.flip); }
   addEvents(events: AttackEvent[]) { this.scene?.addEvents(events); }
   setFastPhase(on: boolean) { this.scene?.setFastPhase(on); }
+  setZones(zones: ZoneSnapshot[]) { this.scene?.setZones(zones); }
 
   /** Map a viewport point (clientX/clientY) to a field tile, or null if outside. */
   screenToTile(clientX: number, clientY: number): FieldTap | null {

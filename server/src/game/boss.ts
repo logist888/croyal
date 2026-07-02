@@ -171,7 +171,15 @@ export class BossRoom {
       const sx = x ?? BOSS_POS.x;
       const sy = y ?? BOSS_POS.y;
       if (dist(sx, sy, BOSS_POS.x, BOSS_POS.y) <= (card.spellRadius ?? 1)) {
-        this.damageBoss(card.spellDamage ?? 0, p);
+        // Boss-raid shim for mechanic spells: DoT zones deal their full
+        // over-time damage up front, chain spells deal their arc damage;
+        // utility effects (root/slow/heal/rage/shield/knockback) are no-ops
+        // against the boss (documented limitation).
+        let dmg = card.spellDamage ?? 0;
+        if (card.effect?.kind === 'zone' && card.effect.status === 'poison') {
+          dmg += card.effect.magnitude * card.effect.zoneSeconds;
+        }
+        this.damageBoss(Math.round(dmg), p);
       }
       return;
     }

@@ -15,11 +15,38 @@ import {
   CARDS, getCard, levelStatMultiplier, canDeployTroop,
   type Side, type TowerType, type CardDef, type TargetKind, type BattleConfig,
   type BattleSnapshot, type EntitySnapshot, type MatchResult, type CardCooldown,
-  type AttackEvent,
+  type AttackEvent, type StatusKind, type TroopAbility, type ZoneSnapshot,
 } from '@croyal/shared';
 
 /** FX events kept per snapshot window (visual only; bounded for payload size). */
 const MAX_EVENTS_PER_WINDOW = 60;
+/** Lingering spell areas are bounded; the oldest is evicted beyond the cap. */
+const MAX_ZONES = 12;
+/** How far a chain attack can arc between consecutive victims (tiles). */
+const CHAIN_JUMP_RADIUS = 2.5;
+/** Chargers re-arm their first-hit bonus after this long without attacking. */
+const CHARGE_REARM_DEFAULT = 4;
+
+/** One active status per kind: strongest magnitude wins, duration refreshes. */
+interface StatusInstance {
+  kind: StatusKind;
+  remaining: number;
+  magnitude: number;
+  sourceSide: Side;
+}
+
+/** A lingering poison/slow area left by a spell. NOT an entity — untargetable. */
+interface Zone {
+  id: string;
+  side: Side; // caster's side (affects the OTHER side)
+  x: number;
+  y: number;
+  radius: number;
+  status: 'poison' | 'slow';
+  magnitude: number;
+  remaining: number;
+  color: number;
+}
 
 type MarchState = 'march' | 'intercept' | 'engage';
 
@@ -47,6 +74,11 @@ interface Entity {
   lifetime: number; // seconds remaining, Infinity for permanent
   kingActivated: boolean;
   marchState: MarchState; // fixed-lane units only; 'march' otherwise
+  statuses: StatusInstance[];
+  ability?: TroopAbility;
+  charging: boolean; // charge ability armed (next hit is the heavy one)
+  chargeRearm: number; // seconds without attacking until charge re-arms
+  spawnCd: number; // spawner ability countdown
 }
 
 interface DeployResult {
@@ -80,6 +112,9 @@ export class Simulation {
   private interceptAssignments = new Map<string, string>();
   /** Combat FX since the last snapshot broadcast (cleared by the match loop). */
   private events: AttackEvent[] = [];
+  /** Lingering poison/slow spell areas. */
+  private zones: Zone[] = [];
+  private zoneSeq = 0;
   private seq = 0;
   private towersDestroyed: Record<Side, number> = { A: 0, B: 0 };
   private towerDamage: Record<Side, number> = { A: 0, B: 0 };
@@ -148,8 +183,66 @@ export class Simulation {
         lifetime: Infinity,
         kingActivated: tt !== 'king', // princess towers are always active
         marchState: 'march',
+        statuses: [],
+        charging: false,
+        chargeRearm: 0,
+        spawnCd: 0,
       });
     }
+  }
+
+  // --- Status framework (the unified mechanic backbone) ---
+
+  /** One instance per kind: strongest magnitude wins, duration refreshes. */
+  private applyStatus(e: Entity, kind: StatusKind, magnitude: number, seconds: number, sourceSide: Side): void {
+    const existing = e.statuses.find((s) => s.kind === kind);
+    if (existing) {
+      existing.magnitude = Math.max(existing.magnitude, magnitude);
+      existing.remaining = Math.max(existing.remaining, seconds);
+      existing.sourceSide = sourceSide;
+    } else {
+      e.statuses.push({ kind, remaining: seconds, magnitude, sourceSide });
+    }
+  }
+
+  private statusOf(e: Entity, kind: StatusKind): StatusInstance | undefined {
+    return e.statuses.find((s) => s.kind === kind);
+  }
+
+  private isStunned(e: Entity): boolean {
+    return !!this.statusOf(e, 'stun');
+  }
+
+  /** The ONE place all speed math lands: root/stun stop, slow/rage/charge scale. */
+  private effectiveMoveSpeed(e: Entity): number {
+    if (e.statuses.length === 0 && !e.charging) return e.moveSpeed;
+    if (this.statusOf(e, 'root') || this.statusOf(e, 'stun')) return 0;
+    let speed = e.moveSpeed;
+    const slow = this.statusOf(e, 'slow');
+    if (slow) speed *= slow.magnitude;
+    const rage = this.statusOf(e, 'rage');
+    if (rage) speed *= rage.magnitude;
+    if (e.charging && e.ability?.kind === 'charge') speed *= e.ability.speedMult;
+    return speed;
+  }
+
+  /** Seconds between hits, sped up by rage. */
+  private effectiveHitSpeed(e: Entity): number {
+    const rage = this.statusOf(e, 'rage');
+    return rage ? e.hitSpeed / rage.magnitude : e.hitSpeed;
+  }
+
+  /** Tick down statuses; poison deals its damage here (damage lives in the status). */
+  private tickStatuses(e: Entity, dt: number): void {
+    if (e.statuses.length === 0) return;
+    for (const s of e.statuses) {
+      if (s.kind === 'poison') {
+        this.applyDamage(e, s.magnitude * dt, s.sourceSide);
+        if (e.hp <= 0) return;
+      }
+      s.remaining -= dt;
+    }
+    e.statuses = e.statuses.filter((s) => s.remaining > 0);
   }
 
   private getTower(side: Side, tt: TowerType): Entity | undefined {
@@ -294,6 +387,11 @@ export class Simulation {
         lifetime: card.lifetimeSeconds ?? Infinity,
         kingActivated: true,
         marchState: 'march',
+        statuses: [],
+        ability: card.ability,
+        charging: card.ability?.kind === 'charge',
+        chargeRearm: 0,
+        spawnCd: card.ability?.kind === 'spawner' ? card.ability.everySeconds : 0,
       });
     }
   }
@@ -302,13 +400,128 @@ export class Simulation {
     const radius = card.spellRadius ?? 1;
     const dmg = Math.round((card.spellDamage ?? 0) * levelStatMultiplier(this.cardLevel(side, card.id)));
     const enemy = otherSide(side);
+    const effect = card.effect;
     this.pushEvent({ kind: 'spell', side, fromX: x, fromY: y, toX: x, toY: y, ranged: false, radius });
-    for (const e of this.entities.values()) {
-      if (e.side !== enemy || e.hp <= 0) continue;
-      if (dist(e.x, e.y, x, y) <= radius) {
-        this.applyDamage(e, dmg, side);
+
+    // Chain spells route their damage through arcs instead of the AoE blast.
+    if (effect?.kind === 'chain') {
+      this.castChain(side, x, y, dmg, effect.jumps, effect.falloff);
+      return;
+    }
+
+    // Instant AoE damage first (may be 0 for pure-utility spells).
+    if (dmg > 0) {
+      for (const e of this.entities.values()) {
+        if (e.side !== enemy || e.hp <= 0) continue;
+        if (dist(e.x, e.y, x, y) <= radius) {
+          this.applyDamage(e, dmg, side);
+        }
       }
     }
+    if (!effect) return;
+
+    switch (effect.kind) {
+      case 'zone': {
+        this.zones.push({
+          id: `z-${this.zoneSeq++}`, side, x, y, radius,
+          status: effect.status, magnitude: effect.magnitude,
+          remaining: effect.zoneSeconds, color: card.color,
+        });
+        if (this.zones.length > MAX_ZONES) this.zones.shift();
+        break;
+      }
+      case 'root': {
+        for (const e of this.entities.values()) {
+          if (e.side !== enemy || e.hp <= 0 || e.kind !== 'unit' || e.flying) continue;
+          if (dist(e.x, e.y, x, y) <= radius) this.applyStatus(e, 'root', 1, effect.seconds, side);
+        }
+        break;
+      }
+      case 'knockback': {
+        for (const e of this.entities.values()) {
+          if (e.side !== enemy || e.hp <= 0 || e.kind !== 'unit') continue;
+          const d = dist(e.x, e.y, x, y);
+          if (d > radius) continue;
+          const len = d || 1;
+          e.x = clamp(e.x + ((e.x - x) / len) * effect.tiles, 0.5, ARENA_WIDTH - 0.5);
+          e.y = clamp(e.y + ((e.y - y) / len) * effect.tiles, 0.5, ARENA_HEIGHT - 0.5);
+          if (this.config.deployment === 'fixed-lane') this.clampCollisions(e, null);
+          this.applyStatus(e, 'stun', 1, effect.stunSeconds, side);
+          this.pushEvent({ kind: 'attack', side, fromX: x, fromY: y, toX: round2(e.x), toY: round2(e.y), ranged: false, effect: 'knockback' });
+        }
+        break;
+      }
+      case 'heal': {
+        for (const e of this.entities.values()) {
+          if (e.side !== side || e.hp <= 0 || e.kind === 'tower') continue;
+          if (dist(e.x, e.y, x, y) <= radius) {
+            e.hp = Math.min(e.maxHp, e.hp + effect.amount);
+            this.pushEvent({ kind: 'attack', side, fromX: round2(e.x), fromY: round2(e.y), toX: round2(e.x), toY: round2(e.y), ranged: false, effect: 'heal' });
+          }
+        }
+        break;
+      }
+      case 'rage': {
+        for (const e of this.entities.values()) {
+          if (e.side !== side || e.hp <= 0 || e.kind !== 'unit') continue;
+          if (dist(e.x, e.y, x, y) <= radius) this.applyStatus(e, 'rage', effect.factor, effect.seconds, side);
+        }
+        break;
+      }
+      case 'shield': {
+        for (const e of this.entities.values()) {
+          if (e.side !== side || e.hp <= 0 || e.kind !== 'unit') continue;
+          if (dist(e.x, e.y, x, y) <= radius) this.applyStatus(e, 'shield', effect.amount, effect.seconds, side);
+        }
+        break;
+      }
+    }
+  }
+
+  /** Lightning arc: hit the enemy nearest the tap, then jump to fresh targets. */
+  private castChain(side: Side, x: number, y: number, dmg: number, jumps: number, falloff: number): void {
+    const enemy = otherSide(side);
+    const hit = new Set<string>();
+    let cx = x;
+    let cy = y;
+    let damage = dmg;
+    for (let i = 0; i <= jumps; i++) {
+      let best: Entity | null = null;
+      let bestD = Infinity;
+      for (const e of this.entities.values()) {
+        if (e.side !== enemy || e.hp <= 0 || hit.has(e.id)) continue;
+        const d = dist(e.x, e.y, cx, cy);
+        const maxD = i === 0 ? (jumps + 2) : CHAIN_JUMP_RADIUS; // first pick: near the tap
+        if (d <= maxD && d < bestD) {
+          bestD = d;
+          best = e;
+        }
+      }
+      if (!best) break;
+      hit.add(best.id);
+      this.pushEvent({ kind: 'attack', side, fromX: round2(cx), fromY: round2(cy), toX: round2(best.x), toY: round2(best.y), ranged: true, effect: 'chain' });
+      this.applyDamage(best, Math.round(damage), side);
+      cx = best.x;
+      cy = best.y;
+      damage *= falloff;
+    }
+  }
+
+  /** Zones apply their status to enemies inside; effect decays shortly after leaving. */
+  private stepZones(dt: number): void {
+    if (this.zones.length === 0) return;
+    for (const z of this.zones) {
+      z.remaining -= dt;
+      if (z.remaining <= 0) continue;
+      const enemy = otherSide(z.side);
+      for (const e of this.entities.values()) {
+        if (e.side !== enemy || e.hp <= 0) continue;
+        if (dist(e.x, e.y, z.x, z.y) <= z.radius) {
+          this.applyStatus(e, z.status, z.magnitude, 0.5, z.side);
+        }
+      }
+    }
+    this.zones = this.zones.filter((z) => z.remaining > 0);
   }
 
   private pushEvent(ev: AttackEvent): void {
@@ -378,6 +591,15 @@ export class Simulation {
 
   private applyDamage(target: Entity, amount: number, bySide: Side): void {
     if (target.hp <= 0) return;
+    // A shield status is a damage-absorbing pool; it soaks before hp.
+    const shield = this.statusOf(target, 'shield');
+    if (shield) {
+      const absorbed = Math.min(shield.magnitude, amount);
+      shield.magnitude -= absorbed;
+      amount -= absorbed;
+      if (shield.magnitude <= 0) target.statuses = target.statuses.filter((s) => s !== shield);
+      if (amount <= 0) return;
+    }
     const dealt = Math.min(amount, target.hp);
     target.hp -= amount;
 
@@ -430,7 +652,7 @@ export class Simulation {
       gy = Math.abs(e.x - crossingBridge) > 0.2 ? ownBankY : farBankY;
     }
     const d = dist(e.x, e.y, gx, gy);
-    const step = e.moveSpeed * dt;
+    const step = this.effectiveMoveSpeed(e) * dt;
     if (d <= step || d === 0) {
       e.x = gx;
       e.y = gy;
@@ -556,7 +778,7 @@ export class Simulation {
     if (d <= this.reachOf(e, target)) {
       if (e.attackCd <= 0 && e.damage > 0) {
         this.attack(e, target);
-        e.attackCd = e.hitSpeed;
+        e.attackCd = this.effectiveHitSpeed(e);
       }
     } else if (e.moveSpeed > 0) {
       this.moveToward(e, target.x, target.y, dt, LANE_SPAWN[e.side].x);
@@ -603,6 +825,9 @@ export class Simulation {
         return;
       }
     }
+    // Statuses tick for everything (poison melts even an inactive king).
+    this.tickStatuses(e, dt);
+    if (e.hp <= 0) return;
     if (e.attackCd > 0) e.attackCd -= dt;
 
     // towers: inactive king does nothing
@@ -611,14 +836,20 @@ export class Simulation {
     // Static defenders re-scan every tick (fix: they used to lock a distant
     // enemy tower forever and never fire at approaching units).
     if (e.kind === 'tower' || e.kind === 'building') {
+      if (e.kind === 'building' && this.tickBuildingAbility(e, dt)) return;
       const target = this.acquireDefenderTarget(e);
       e.targetId = target ? target.id : null;
-      if (target && e.attackCd <= 0 && e.damage > 0) {
+      if (target && e.attackCd <= 0 && e.damage > 0 && !this.isStunned(e)) {
         this.attack(e, target);
-        e.attackCd = e.hitSpeed;
+        e.attackCd = this.effectiveHitSpeed(e);
       }
       return;
     }
+
+    // Data-driven unit abilities work in EVERY deployment mode.
+    this.tickUnitAbility(e, dt);
+    if (e.hp <= 0) return;
+    if (this.isStunned(e)) return; // stunned: no movement, no attacks
 
     if (this.config.deployment === 'fixed-lane') {
       this.stepLaneUnit(e, dt);
@@ -638,11 +869,131 @@ export class Simulation {
     if (d <= e.range + 0.5) {
       if (e.attackCd <= 0 && e.damage > 0) {
         this.attack(e, target);
-        e.attackCd = e.hitSpeed;
+        e.attackCd = this.effectiveHitSpeed(e);
       }
     } else if (e.moveSpeed > 0) {
       this.moveToward(e, target.x, target.y, dt);
     }
+  }
+
+  /**
+   * Building abilities. Returns true when the building's turn is fully
+   * handled (healers/spawners do their thing instead of shooting).
+   */
+  private tickBuildingAbility(e: Entity, dt: number): boolean {
+    const ability = e.ability;
+    if (!ability) return false;
+    if (ability.kind === 'healer') {
+      if (e.attackCd <= 0 && !this.isStunned(e)) {
+        const target = this.acquireAllyHealTarget(e, ability.healRadius ?? e.range);
+        if (target) {
+          this.healAround(e, target, ability.healPerHit, ability.healRadius ?? 0);
+          e.attackCd = this.effectiveHitSpeed(e);
+        }
+      }
+      return true;
+    }
+    if (ability.kind === 'spawner') {
+      this.tickSpawner(e, ability, dt);
+      return true; // pure spawner buildings don't also shoot
+    }
+    return false;
+  }
+
+  /** Unit abilities that tick continuously (any deployment mode). */
+  private tickUnitAbility(e: Entity, dt: number): void {
+    const ability = e.ability;
+    if (!ability) return;
+    switch (ability.kind) {
+      case 'charge': {
+        // Re-arm the heavy hit after a stretch without attacking.
+        if (!e.charging) {
+          e.chargeRearm -= dt;
+          if (e.chargeRearm <= 0) e.charging = true;
+        }
+        return;
+      }
+      case 'healer': {
+        // Heal the most-wounded ally in range INSTEAD of attacking this beat;
+        // movement (march/chase) continues unaffected.
+        if (e.attackCd <= 0 && !this.isStunned(e)) {
+          const target = this.acquireAllyHealTarget(e, e.range);
+          if (target) {
+            this.healAround(e, target, ability.healPerHit, ability.healRadius ?? 0);
+            e.attackCd = this.effectiveHitSpeed(e);
+          }
+        }
+        return;
+      }
+      case 'rageAura': {
+        for (const ally of this.entities.values()) {
+          if (ally.side !== e.side || ally.hp <= 0 || ally.kind !== 'unit' || ally === e) continue;
+          if (dist(ally.x, ally.y, e.x, e.y) <= ability.radius) {
+            this.applyStatus(ally, 'rage', ability.factor, 0.5, e.side);
+          }
+        }
+        return;
+      }
+      case 'spawner': {
+        this.tickSpawner(e, ability, dt);
+        return;
+      }
+    }
+  }
+
+  /** Most-wounded allied unit within range (never self, towers, or full-hp). */
+  private acquireAllyHealTarget(e: Entity, range: number): Entity | null {
+    let best: Entity | null = null;
+    let bestFrac = 1;
+    for (const ally of this.entities.values()) {
+      if (ally.side !== e.side || ally.hp <= 0 || ally === e || ally.kind === 'tower') continue;
+      if (ally.hp >= ally.maxHp) continue;
+      if (dist(ally.x, ally.y, e.x, e.y) > range) continue;
+      const frac = ally.hp / ally.maxHp;
+      if (frac < bestFrac) {
+        bestFrac = frac;
+        best = ally;
+      }
+    }
+    return best;
+  }
+
+  private healAround(healer: Entity, target: Entity, amount: number, radius: number): void {
+    const recipients = radius > 0
+      ? [...this.entities.values()].filter((a) =>
+          a.side === healer.side && a.hp > 0 && a.kind !== 'tower' && a !== healer
+          && a.hp < a.maxHp && dist(a.x, a.y, target.x, target.y) <= radius)
+      : [target];
+    for (const a of recipients) {
+      a.hp = Math.min(a.maxHp, a.hp + amount);
+      this.pushEvent({
+        kind: 'attack', side: healer.side,
+        fromX: round2(healer.x), fromY: round2(healer.y),
+        toX: round2(a.x), toY: round2(a.y),
+        ranged: true, effect: 'heal',
+      });
+    }
+  }
+
+  private tickSpawner(e: Entity, ability: Extract<TroopAbility, { kind: 'spawner' }>, dt: number): void {
+    e.spawnCd -= dt;
+    if (e.spawnCd > 0) return;
+    e.spawnCd = ability.everySeconds;
+    const token = getCard(ability.unit);
+    if (!token) return;
+    const alive = [...this.entities.values()]
+      .filter((u) => u.side === e.side && u.cardId === ability.unit && u.hp > 0).length;
+    const room = ability.maxAlive - alive;
+    if (room <= 0) return;
+    const n = Math.min(ability.count, room);
+    for (let i = 0; i < n; i++) {
+      this.spawnCard(e.side, token, e.x + (i - (n - 1) / 2) * 0.7, e.y);
+    }
+    this.pushEvent({
+      kind: 'attack', side: e.side,
+      fromX: round2(e.x), fromY: round2(e.y), toX: round2(e.x), toY: round2(e.y),
+      ranged: false, effect: 'spawn',
+    });
   }
 
   private attack(e: Entity, target: Entity): void {
@@ -654,8 +1005,56 @@ export class Simulation {
       toX: round2(target.x),
       toY: round2(target.y),
       ranged: e.range > 2,
+      effect: e.ability?.kind === 'chain' ? 'chain' : undefined,
     });
-    this.applyDamage(target, e.damage, e.side);
+
+    // Charge/ambush: the armed first hit lands heavier, then re-arms on march.
+    let damage = e.damage;
+    if (e.charging && e.ability?.kind === 'charge') {
+      damage = Math.round(damage * e.ability.firstHitMult);
+      e.charging = false;
+      e.chargeRearm = e.ability.rearmSeconds ?? CHARGE_REARM_DEFAULT;
+    }
+
+    this.applyDamage(target, damage, e.side);
+
+    // On-hit status (poisoned blades, frost arrows…).
+    if (e.ability?.kind === 'onHitStatus' && target.hp > 0) {
+      this.applyStatus(target, e.ability.status, e.ability.magnitude, e.ability.seconds, e.side);
+    }
+
+    // Chain ability: arcs hop to fresh targets near the last victim.
+    if (e.ability?.kind === 'chain') {
+      const enemy = otherSide(e.side);
+      const hit = new Set<string>([target.id]);
+      let last = target;
+      let arcDamage = damage;
+      for (let i = 0; i < e.ability.jumps; i++) {
+        let best: Entity | null = null;
+        let bestD = Infinity;
+        for (const other of this.entities.values()) {
+          if (other.side !== enemy || other.hp <= 0 || hit.has(other.id)) continue;
+          if (!this.canHit(e, other)) continue;
+          const d = dist(other.x, other.y, last.x, last.y);
+          if (d <= CHAIN_JUMP_RADIUS && d < bestD) {
+            bestD = d;
+            best = other;
+          }
+        }
+        if (!best) break;
+        hit.add(best.id);
+        arcDamage = Math.round(arcDamage * e.ability.falloff);
+        this.pushEvent({
+          kind: 'attack', side: e.side,
+          fromX: round2(last.x), fromY: round2(last.y),
+          toX: round2(best.x), toY: round2(best.y),
+          ranged: true, effect: 'chain',
+        });
+        this.applyDamage(best, arcDamage, e.side);
+        last = best;
+      }
+    }
+
     if (e.splashRadius > 0) {
       const enemy = otherSide(e.side);
       for (const other of this.entities.values()) {
@@ -689,6 +1088,7 @@ export class Simulation {
       }
     }
 
+    this.stepZones(dt);
     if (this.config.deployment === 'fixed-lane') this.assignInterceptors();
 
     // step a stable snapshot of entities (towers + units)
@@ -756,6 +1156,7 @@ export class Simulation {
         maxHp: e.maxHp,
         flying: e.flying,
         color: e.color,
+        statuses: e.statuses.length ? [...new Set(e.statuses.map((s) => s.kind))] : undefined,
       });
     }
     let cooldowns: CardCooldown[] | undefined;
@@ -780,6 +1181,12 @@ export class Simulation {
       cooldowns,
       finalPhase: this.finalPhase(),
       events: this.events.length ? [...this.events] : undefined,
+      zones: this.zones.length
+        ? this.zones.map((z): ZoneSnapshot => ({
+            id: z.id, x: round2(z.x), y: round2(z.y), radius: z.radius,
+            status: z.status, color: z.color, remaining: round2(z.remaining),
+          }))
+        : undefined,
     };
   }
 

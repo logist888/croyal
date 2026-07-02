@@ -158,6 +158,7 @@ export async function startBattle(nav: Nav): Promise<void> {
     if (field) field.setFlip(yourSide === 'B');
     field?.render(snap.entities);
     if (snap.events?.length) field?.addEvents(snap.events);
+    field?.setZones(snap.zones ?? []);
     const fast = snap.finalPhase ?? snap.doubleElixir;
     field?.setFastPhase(fast);
 
