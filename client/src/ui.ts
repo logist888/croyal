@@ -4,8 +4,8 @@
  */
 import {
   getCard, NICKNAME_REGEX, NICKNAME_MIN, NICKNAME_MAX,
-  leagueForTrophies, levelFromXp, averageElixir, RARITY_COLOR, LEAGUES,
-  MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats,
+  leagueForTrophies, levelFromXp, averageElixir, averageCooldown, RARITY_COLOR, LEAGUES,
+  MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats, TRIO_SIZE, ALL_CARD_IDS,
 } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
@@ -20,6 +20,7 @@ export interface Nav {
   toBattle(): void;
   toBoss(clanId: string): void;
   toCollection(): void;
+  toTrio(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -157,7 +158,8 @@ export function renderMenu(nav: Nav): void {
   const pct = nextMin !== null
     ? Math.min(100, Math.max(0, ((p.trophies - league.min) / (nextMin - league.min)) * 100))
     : 100;
-  const avg = averageElixir(p.deck);
+  const cooldownMode = state.mode.economy === 'cooldown';
+  const avg = cooldownMode ? averageCooldown(p.trio) : averageElixir(p.deck);
 
   const node = div('screen');
   node.innerHTML = `
@@ -195,16 +197,17 @@ export function renderMenu(nav: Nav): void {
 
     <div class="card">
       <div class="row space-between">
-        <div class="muted">${t('menu.yourDeck')}</div>
-        <div class="muted">${t('menu.avgElixir', { v: avg })}</div>
+        <div class="muted">${cooldownMode ? t('menu.trio') : t('menu.yourDeck')}</div>
+        <div class="muted">${cooldownMode ? t('menu.avgCooldown', { v: avg }) : t('menu.avgElixir', { v: avg })}</div>
       </div>
-      <div class="hand" id="deck"></div>
+      <div class="hand${cooldownMode ? ' trio' : ''}" id="deck"></div>
+      ${cooldownMode ? `<button id="edit-trio" class="secondary" style="margin-top:8px">${t('trio.edit')}</button>` : ''}
     </div>
   `;
   setUI(node);
 
   const deck = node.querySelector<HTMLDivElement>('#deck')!;
-  for (const id of p.deck) {
+  for (const id of cooldownMode ? p.trio : p.deck) {
     const c = getCard(id)!;
     const cell = div('handcard');
     const art = cardImageUrl(id);
@@ -213,7 +216,9 @@ export function renderMenu(nav: Nav): void {
       cell.style.backgroundImage = `url(${art})`;
     } else {
       cell.style.background = hex(c.color);
-      cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
+      cell.innerHTML = cooldownMode
+        ? `${escapeHtml(cardName(id))}<div class="cost cost-cd">${c.cooldownSec}s</div>`
+        : `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
     }
     cell.style.border = `2px solid ${hex(RARITY_COLOR[c.rarity])}`;
     deck.appendChild(cell);
@@ -222,6 +227,81 @@ export function renderMenu(nav: Nav): void {
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
   node.querySelector<HTMLButtonElement>('#clans')!.onclick = () => { haptic('light'); nav.toClans(); };
+  node.querySelector<HTMLButtonElement>('#edit-trio')?.addEventListener('click', () => { haptic('light'); nav.toTrio(); });
+}
+
+// --- Battle trio picker: choose exactly TRIO_SIZE cards from the collection ---
+export async function renderTrioPicker(nav: Nav): Promise<void> {
+  setGameVisible(false);
+  try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
+  const p = state.profile!;
+  const selected = new Set<string>(p.trio);
+
+  const node = div('screen');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('trio.title')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div class="muted">${t('trio.hint')}</div>
+    <div class="collection" id="grid"></div>
+    <div class="error" id="err"></div>
+    <button id="save" class="accent">${t('trio.save')} (${selected.size}/${TRIO_SIZE})</button>
+  `;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+
+  const grid = node.querySelector<HTMLDivElement>('#grid')!;
+  const save = node.querySelector<HTMLButtonElement>('#save')!;
+  const err = node.querySelector<HTMLDivElement>('#err')!;
+
+  const refreshSave = () => {
+    save.textContent = `${t('trio.save')} (${selected.size}/${TRIO_SIZE})`;
+    save.disabled = selected.size !== TRIO_SIZE;
+  };
+
+  for (const id of ALL_CARD_IDS) {
+    const c = getCard(id);
+    const cs = p.cards[id];
+    if (!c || !cs) continue;
+    const cell = div('col-card trio-pick');
+    cell.style.borderColor = hex(RARITY_COLOR[c.rarity]);
+    const art = cardImageUrl(id);
+    const bg = art
+      ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center top`
+      : `background:${hex(c.color)}`;
+    cell.innerHTML = `
+      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cooldownSec}s</span></div>
+      <div class="col-lvl">${t('col.level', { n: cs.level })}</div>`;
+    cell.classList.toggle('picked', selected.has(id));
+    cell.onclick = () => {
+      if (selected.has(id)) {
+        selected.delete(id);
+      } else {
+        if (selected.size >= TRIO_SIZE) return;
+        selected.add(id);
+      }
+      cell.classList.toggle('picked', selected.has(id));
+      haptic('light');
+      refreshSave();
+    };
+    grid.appendChild(cell);
+  }
+  refreshSave();
+
+  save.onclick = async () => {
+    err.textContent = '';
+    save.disabled = true;
+    try {
+      state.profile = (await api.updateTrio([...selected])).profile;
+      haptic('success');
+      nav.toMenu();
+    } catch (e) {
+      err.textContent = (e as Error).message;
+      save.disabled = false;
+      haptic('error');
+    }
+  };
 }
 
 // --- Collection (cards: level, upgrade) ---

@@ -20,7 +20,7 @@ import {
 } from './hud';
 import { beginCardDrag } from './deploy-drag';
 import { haptic } from './telegram';
-import { t, reasonText } from './i18n';
+import { t, reasonText, cardName } from './i18n';
 import { cardImageUrl } from './assets';
 
 export async function startBattle(nav: Nav): Promise<void> {
@@ -33,6 +33,9 @@ export async function startBattle(nav: Nav): Promise<void> {
   let opponentName = '';
   let off: (() => void) | null = null;
   let inMatch = false;
+  let fastBannerShown = false;
+  let seenIds: Set<string> | null = null;
+  let statusTimer = 0;
   const cooldownMode = state.mode.economy === 'cooldown';
 
   // Mirror of the server's deploy rule, used for the live drag preview.
@@ -84,7 +87,8 @@ export async function startBattle(nav: Nav): Promise<void> {
       </div>
       <div id="arena" class="arena-host"></div>
       ${cooldownMode
-        ? `<div class="aim-hint" id="aim-hint" style="display:none">${t('battle.aimHint')}</div>
+        ? `<div class="status-line" id="status-line"></div>
+           <div class="aim-hint" id="aim-hint" style="display:none">${t('battle.aimHint')}</div>
            <div class="handbar"><div class="hand" id="hand"></div></div>`
         : `${elixirBarHtml()}
            <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`}`;
@@ -133,7 +137,38 @@ export async function startBattle(nav: Nav): Promise<void> {
     field?.render(snap.entities);
 
     if (cooldownMode) {
-      trio?.setCooldowns(snap.cooldowns ?? []);
+      trio?.setCooldowns(snap.cooldowns ?? [], snap.finalPhase ? 2 : 1);
+
+      // Status line: announce units that just entered the field.
+      const ids = new Set(snap.entities.map((e) => e.id));
+      if (seenIds) {
+        let mine: string | null = null;
+        let theirs: string | null = null;
+        for (const e of snap.entities) {
+          if (e.kind === 'tower' || !e.cardId || seenIds.has(e.id)) continue;
+          if (e.side === yourSide) mine = e.cardId;
+          else theirs = e.cardId;
+        }
+        const line = root.querySelector<HTMLDivElement>('#status-line');
+        if (line && (mine || theirs)) {
+          line.textContent = theirs ? `⚠️ ${cardName(theirs)}` : `⚔️ ${cardName(mine!)}`;
+          line.classList.add('show');
+          window.clearTimeout(statusTimer);
+          statusTimer = window.setTimeout(() => line.classList.remove('show'), 2200);
+        }
+      }
+      seenIds = ids;
+
+      // One-time "final minute" banner when the fast phase kicks in.
+      if (snap.finalPhase && !fastBannerShown) {
+        fastBannerShown = true;
+        haptic('light');
+        const banner = document.createElement('div');
+        banner.className = 'fast-banner';
+        banner.textContent = t('battle.fastPhase');
+        root.appendChild(banner);
+        window.setTimeout(() => banner.remove(), 4000);
+      }
     } else {
       // Which enemy princess towers are down → opens that lane for deployment.
       const enemy = otherSide(yourSide);

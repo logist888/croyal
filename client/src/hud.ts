@@ -84,8 +84,11 @@ export function buildHand(container: HTMLElement, handlers: HandHandlers = {}): 
 // --- Trio hand (cooldown battle model): 3 big cards, each with its own recharge ---
 
 export interface TrioUI {
-  /** Update the recharge overlays from the latest snapshot. */
-  setCooldowns(cds: CardCooldown[]): void;
+  /**
+   * Update the recharge overlays from the latest snapshot. `speed` is the
+   * local countdown rate between 10Hz snapshots (2 in the final minute).
+   */
+  setCooldowns(cds: CardCooldown[], speed?: number): void;
   /** Highlight the spell that is in aim mode (null clears). */
   setAiming(cardId: string | null): void;
 }
@@ -99,6 +102,9 @@ export function buildTrioHand(container: HTMLElement, handlers: TrioHandlers): T
   container.classList.add('trio');
   let aiming: string | null = null;
   const cells = new Map<string, HTMLElement>();
+  // Server truth arrives at 10Hz; a rAF loop counts the overlays down smoothly
+  // in between and resyncs on every snapshot.
+  const timers = new Map<string, { remaining: number; total: number; at: number; speed: number }>();
 
   function buildCell(cardId: string): HTMLElement {
     const c = getCard(cardId)!;
@@ -125,22 +131,43 @@ export function buildTrioHand(container: HTMLElement, handlers: TrioHandlers): T
     return cell;
   }
 
+  function paint(cardId: string, remaining: number, total: number): void {
+    const cell = cells.get(cardId);
+    if (!cell) return;
+    const cooling = remaining > 0.001;
+    if (cell.classList.contains('cooling') && !cooling) {
+      // recharge finished — a little "ready" pop
+      cell.classList.add('pop');
+      window.setTimeout(() => cell.classList.remove('pop'), 350);
+    }
+    cell.classList.toggle('cooling', cooling);
+    const overlay = cell.querySelector<HTMLDivElement>('.cd-overlay')!;
+    const num = cell.querySelector<HTMLDivElement>('.cd-num')!;
+    const frac = cooling && total > 0 ? Math.min(1, remaining / total) : 0;
+    overlay.style.height = `${frac * 100}%`;
+    num.textContent = cooling ? String(Math.ceil(remaining)) : '';
+  }
+
+  let raf = 0;
+  const tick = () => {
+    if (!container.isConnected) {
+      cancelAnimationFrame(raf);
+      return;
+    }
+    const now = performance.now();
+    for (const [id, tm] of timers) {
+      const rem = Math.max(0, tm.remaining - ((now - tm.at) / 1000) * tm.speed);
+      paint(id, rem, tm.total);
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+
   return {
-    setCooldowns(cds: CardCooldown[]) {
+    setCooldowns(cds: CardCooldown[], speed = 1) {
       for (const cd of cds) {
-        let cell = cells.get(cd.cardId);
-        if (!cell) {
-          cell = buildCell(cd.cardId);
-          cells.set(cd.cardId, cell);
-        }
-        const cooling = cd.remaining > 0.001;
-        cell.classList.toggle('cooling', cooling);
-        cell.classList.toggle('aiming', aiming === cd.cardId);
-        const overlay = cell.querySelector<HTMLDivElement>('.cd-overlay')!;
-        const num = cell.querySelector<HTMLDivElement>('.cd-num')!;
-        const frac = cooling && cd.total > 0 ? Math.min(1, cd.remaining / cd.total) : 0;
-        overlay.style.height = `${Math.round(frac * 100)}%`;
-        num.textContent = cooling ? String(Math.ceil(cd.remaining)) : '';
+        if (!cells.has(cd.cardId)) cells.set(cd.cardId, buildCell(cd.cardId));
+        timers.set(cd.cardId, { remaining: cd.remaining, total: cd.total, at: performance.now(), speed });
       }
     },
     setAiming(cardId: string | null) {

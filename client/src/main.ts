@@ -4,7 +4,7 @@
 import { api } from './net';
 import { state } from './state';
 import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
-import { renderRegister, renderMenu, renderClans, renderCollection, setUI, logoHtml, type Nav } from './ui';
+import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, setUI, logoHtml, type Nav } from './ui';
 import { startBattle } from './battle';
 import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
@@ -17,6 +17,7 @@ const nav: Nav = {
   toBattle: () => { void startBattle(nav); },
   toBoss: (clanId) => { void startBoss(nav, clanId); },
   toCollection: () => { void renderCollection(nav); },
+  toTrio: () => { void renderTrioPicker(nav); },
 };
 
 function loading(text: string) {

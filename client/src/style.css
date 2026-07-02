@@ -175,7 +175,7 @@ input[type="text"]::placeholder { color: #9b8763; }
 }
 
 /* ===== Battle / boss HUD ===== */
-.hud { width: 100%; max-width: 480px; }
+.hud { width: 100%; max-width: 480px; position: relative; }
 .hud-top {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 10px; gap: 8px;
@@ -241,8 +241,35 @@ input[type="text"]::placeholder { color: #9b8763; }
 }
 .triocard.cooling { filter: grayscale(0.55) brightness(0.85); cursor: default; }
 .triocard.aiming { outline: 3px solid #ffe082; outline-offset: 1px; transform: translateY(-3px); }
+.triocard.pop { animation: trio-pop 0.32s ease-out; }
+@keyframes trio-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); filter: brightness(1.5); }
+  100% { transform: scale(1); }
+}
 .aim-hint { text-align: center; font-size: 12px; color: #ffe082; padding: 2px 8px 0; }
 .chip.timer.fast-phase { color: #ffe082; }
+/* One-line battle status (deploy announcements) */
+.status-line {
+  min-height: 16px; text-align: center; font-size: 12px; font-weight: 700;
+  color: #fff; opacity: 0; transition: opacity 0.25s ease;
+}
+.status-line.show { opacity: 1; }
+/* Transient "final minute" banner over the arena */
+.fast-banner {
+  position: absolute; left: 50%; top: 42%; transform: translateX(-50%);
+  background: rgba(20, 16, 4, 0.85); color: #ffe082; border: 2px solid #ffe082;
+  border-radius: 12px; padding: 10px 16px; font-weight: 900; font-size: 15px;
+  z-index: 50; animation: banner-in 0.3s ease-out; pointer-events: none;
+  text-align: center; max-width: 84%;
+}
+@keyframes banner-in {
+  from { opacity: 0; transform: translateX(-50%) scale(0.8); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+/* Trio picker */
+.col-card.trio-pick.picked { outline: 3px solid #ffe082; outline-offset: 1px; }
+.cost.cost-cd { background: radial-gradient(circle at 35% 30%, #90caf9, #1565c0); font-size: 10px; }
 
 .handcard {
   position: relative; aspect-ratio: 3 / 4; border-radius: 12px; padding: 10px 4px 16px;
