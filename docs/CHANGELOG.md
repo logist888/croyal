@@ -3,6 +3,42 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-14 — Battle core redesign: card cooldowns + fixed-lane auto-march
+The designer's (Мила) new battle vision, merged from the approved prototype and
+the updated GDD. Fully reversible; delivered in four milestones (M1–M4).
+- **Economy — per-card cooldowns replace the elixir pool.** Every card carries a
+  `cooldownSec`; playing a card recharges only that card. The final minute ticks
+  all cooldowns ×2 faster. The server rejects on-cooldown plays. Symmetric in
+  PvP; the only asymmetry is the boss raid (raider cooldowns ×1.5).
+- **Deployment — fixed lanes + auto-march.** The player picks WHICH card and
+  WHEN, never where. Troops spawn on their side's right-lane bridge and march:
+  bridge → enemy lane princess → king. Spells are aimed with a tap (free aim).
+- **Intercept rule:** exactly one nearest marcher peels off per enemy that
+  crosses onto your half; the survivor returns to the march. Tanks never
+  intercept. Contact fighting on the lane via an engagement window.
+- **Hand = battle trio:** 3 active cards from the collection (`profile.trio`,
+  `POST /api/trio`, hub picker). Match length 180s; towers, crowns and the
+  no-draw tiebreaks unchanged (king back + two princesses forward — confirmed).
+- **Onboarding:** 5 starter boxes reveal the starter pool; the first trio is
+  assembled from it (`POST /api/starter/open`, presentational only).
+  **Recommended pairs** (`shared/pairs.ts`) badge good combos in the picker.
+- **Reversibility (GDD requirement):** the legacy elixir/free-placement core is
+  intact behind `BATTLE_ECONOMY` / `BATTLE_DEPLOYMENT` env flags; rollback is a
+  server restart. Legacy behavior pinned by its own tests; fallback commit
+  `3c0354d`.
+- **Renderer juice:** snapshot interpolation (units glide instead of 10Hz
+  snapping), server-emitted combat FX events → projectiles/impact particles/AoE
+  rings, ground shadows, final-minute banner + arena tint, smooth cooldown
+  overlays with a "ready pop", deploy status line.
+- **Fixes:** static defenders (towers/buildings) used to lock a distant enemy
+  tower forever and never fire at approaching units — they now re-scan every
+  tick; ground units no longer stall on the river line or clip water/towers
+  (bridge clamp + body radii); unit sprite-sheets (4×4 grids) now render a
+  single frame instead of the whole grid; missing `col.level` i18n key.
+- Tests 33 → **69** (cooldown economy, lane march, intercept, bot policy, boss
+  cooldowns, trio/starter-box store rules, bot-vs-bot full-match harness) +
+  live E2E in both modes + browser walkthroughs.
+
 ## build-13 — Battle: drag-to-deploy fix + original-game parity
 Fixes the reported bug "couldn't place a single card during battle" and brings the
 battle closer to the reference game.

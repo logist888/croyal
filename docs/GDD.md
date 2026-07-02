@@ -2,14 +2,29 @@
 
 **Genre:** Real-time PvP tower-rush (MOBA-lite collectible card battler)
 **Platform:** Telegram Mini App (Web App; mobile-first, also runs in desktop Telegram & browser)
-**Sessions:** 3–4 minute matches, snackable meta loop
-**Status:** Playable MVP (builds 1–10); progression & hosting in place
-**Doc version:** 1.0 · 2026-06-28
+**Sessions:** 3 minute matches, snackable meta loop
+**Status:** Playable MVP (builds 1–14); progression & hosting in place
+**Doc version:** 1.0 · 2026-06-28 (see the "Core redesign" note below)
 
 > **Original IP.** Tower Clash reproduces the *mechanics and structure* of the
 > tower-rush genre with **entirely original** art, names, characters and branding.
 > No third-party (Supercell) assets, names or trademarks are used. Mechanics are
 > not copyrightable; presentation is our own.
+
+---
+
+> ## ⚡ Core battle redesign (build-14)
+> The battle described in this document's combat section is the **legacy** model
+> (elixir + free placement). Since build-14 the game defaults to the designer's
+> redesigned core: **per-card cooldowns** (no elixir pool; final minute ticks
+> recharges ×2), **fixed lanes with auto-march** (the player picks WHICH card
+> and WHEN — spells are tap-aimed), the **intercept rule** (one nearest marcher
+> peels off per crossing threat), a **3-card battle trio** instead of the 8-deck
+> cycle, **3:00 matches**, starter-box onboarding and recommended pairs. Towers,
+> crowns and the no-draw tiebreaks are unchanged. The legacy core stays intact
+> behind `BATTLE_ECONOMY`/`BATTLE_DEPLOYMENT` env flags (rollback = restart).
+> Up-to-date battle spec: [GAME_DESIGN.md](GAME_DESIGN.md); details:
+> [CHANGELOG.md](CHANGELOG.md) build-14.
 
 ---
 

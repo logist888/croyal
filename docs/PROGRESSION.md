@@ -9,9 +9,16 @@
 - **Gems** — currency field present (no sink/source wired yet).
 - **Boss rewards** — gold scaled by the co-op difficulty multiplier.
 
-## Deck
-- Every player starts with the same 8-card `DEFAULT_DECK`. A deck builder and
-  per-card levels are planned (gold/card-shard sink).
+## Battle trio (cooldown mode — the default since build-14)
+- Every player has a 3-card `trio` (default `DEFAULT_TRIO`), edited in the hub
+  picker (`POST /api/trio`): exactly 3 distinct owned cards.
+- New players open **5 starter boxes** during onboarding and assemble their
+  first trio from the revealed starter pool. Boxes grant **no duplicates** —
+  the upgrade economy is untouched.
+
+## Deck (legacy elixir mode)
+- Every player also keeps the 8-card `DEFAULT_DECK` — it powers the flagged
+  legacy battle core and the per-match reward-drop rotation.
 
 ## Planned (next phases)
 - **Arenas / leagues** keyed by trophy thresholds.
