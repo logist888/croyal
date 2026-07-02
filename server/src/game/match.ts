@@ -75,6 +75,7 @@ export class Match {
   private sendSnapshots(): void {
     if (this.seatA.userId) this.seatA.send({ t: 'battle', snapshot: this.sim.getSnapshot('A') });
     if (this.seatB.userId) this.seatB.send({ t: 'battle', snapshot: this.sim.getSnapshot('B') });
+    this.sim.clearEvents(); // FX window handed off with this snapshot pair
   }
 
   /** A deploy request from a connected player (coords absent for fixed-lane troops). */

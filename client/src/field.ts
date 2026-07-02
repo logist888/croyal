@@ -7,9 +7,14 @@
  */
 import Phaser from 'phaser';
 import {
-  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, BRIDGE_X, type EntitySnapshot,
+  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, BRIDGE_X, type EntitySnapshot, type AttackEvent,
 } from '@croyal/shared';
 import { fieldLoadList, arenaImageUrl } from './assets';
+
+/** Visual FX state (tile coords; converted to px flip-aware at draw time). */
+interface Projectile { x0: number; y0: number; x1: number; y1: number; t: number; dur: number; color: number }
+interface Particle { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: number }
+interface SpellRing { x: number; y: number; radius: number; t: number; dur: number }
 
 export interface FieldTap { x: number; y: number }
 
@@ -37,9 +42,16 @@ function boxTiles(e: EntitySnapshot): number {
 class FieldScene extends Phaser.Scene {
   private bg!: Phaser.GameObjects.Graphics;
   private gfx!: Phaser.GameObjects.Graphics;
+  private fxUnder!: Phaser.GameObjects.Graphics; // shadows (under the sprites)
   private sprites = new Map<string, Phaser.GameObjects.Image>();
   private labels = new Map<string, Phaser.GameObjects.Text>();
   private entities: EntitySnapshot[] = [];
+  /** Smoothed display positions (tiles) — lerped toward the 10Hz snapshots. */
+  private display = new Map<string, { x: number; y: number }>();
+  private projectiles: Projectile[] = [];
+  private particles: Particle[] = [];
+  private rings: SpellRing[] = [];
+  private fastPhase = false;
   private flip = false;
   private w = 0;
   private h = 0;
@@ -72,8 +84,29 @@ class FieldScene extends Phaser.Scene {
     } else {
       this.drawBoard();
     }
+    this.fxUnder = this.add.graphics().setDepth(-1);
     this.gfx = this.add.graphics().setDepth(10000);
+    this.sliceUnitSheets();
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.onTap(this.toTile(p.x, p.y)));
+  }
+
+  /**
+   * Unit art arrives as 4x4 sprite-sheet grids; drawing the whole grid made
+   * units render as a cluster of tiny frames. Re-register each sheet with its
+   * frame size so the field can draw a single frame.
+   */
+  private sliceUnitSheets() {
+    for (const { key } of this.loadList) {
+      if (!key.startsWith('unit:') || !this.textures.exists(key)) continue;
+      const src = this.textures.get(key).getSourceImage() as HTMLImageElement;
+      if (!src.width || !src.height) continue;
+      const sheetKey = `${key}:sheet`;
+      if (this.textures.exists(sheetKey)) continue;
+      this.textures.addSpriteSheet(sheetKey, src as unknown as HTMLImageElement, {
+        frameWidth: Math.floor(src.width / 4),
+        frameHeight: Math.floor(src.height / 4),
+      });
+    }
   }
 
   setData2(entities: EntitySnapshot[], flip: boolean) {
@@ -83,6 +116,38 @@ class FieldScene extends Phaser.Scene {
 
   setMarker(m: { x: number; y: number; valid: boolean } | null) {
     this.marker = m;
+  }
+
+  setFastPhase(on: boolean) {
+    this.fastPhase = on;
+  }
+
+  /** Queue combat FX from a snapshot (projectiles, impacts, spell rings). */
+  addEvents(events: AttackEvent[]) {
+    for (const ev of events) {
+      const color = ev.side === 'A' ? 0xbce8ff : 0xffb3a7;
+      if (ev.kind === 'spell') {
+        this.rings.push({ x: ev.toX, y: ev.toY, radius: ev.radius ?? 2, t: 0, dur: 0.45 });
+        this.burst(ev.toX, ev.toY, 0xffc46b, 10);
+        continue;
+      }
+      if (ev.ranged) {
+        this.projectiles.push({ x0: ev.fromX, y0: ev.fromY, x1: ev.toX, y1: ev.toY, t: 0, dur: 0.16, color });
+      }
+      this.burst(ev.toX, ev.toY, color, 4);
+    }
+  }
+
+  private burst(x: number, y: number, color: number, n: number) {
+    for (let i = 0; i < n; i++) {
+      this.particles.push({
+        x, y,
+        vx: (Math.random() - 0.5) * 5,
+        vy: (Math.random() - 0.5) * 5,
+        life: 0.35, maxLife: 0.35, color,
+      });
+    }
+    if (this.particles.length > 220) this.particles.splice(0, this.particles.length - 220);
   }
 
   /** Convert canvas pixel coords to tile coords (flip-aware). Public for drag. */
@@ -129,25 +194,44 @@ class FieldScene extends Phaser.Scene {
     g.lineStyle(3, 0x244a18, 1).strokeRect(1, 1, this.w - 2, this.h - 2);
   }
 
-  update() {
+  update(_time: number, deltaMs: number) {
     const g = this.gfx;
     if (!g) return;
     g.clear();
+    this.fxUnder?.clear();
     const sx = this.sx();
     const seen = new Set<string>();
+    const dt = Math.min(0.05, deltaMs / 1000);
+    // Exponential smoothing toward the latest 10Hz snapshot (~90ms time constant)
+    // so movement looks continuous instead of snapping 10 times a second.
+    const lerpK = 1 - Math.exp(-deltaMs / 90);
 
     for (const e of this.entities) {
       seen.add(e.id);
-      const { px, py } = this.toPx(e.x, e.y);
+      let disp = this.display.get(e.id);
+      if (!disp || e.kind === 'tower') {
+        disp = { x: e.x, y: e.y };
+        this.display.set(e.id, disp);
+      } else {
+        disp.x += (e.x - disp.x) * lerpK;
+        disp.y += (e.y - disp.y) * lerpK;
+      }
+      const { px, py } = this.toPx(disp.x, disp.y);
       const key = textureKeyFor(e);
+      const sheetKey = key ? `${key}:sheet` : null;
+      const useSheet = sheetKey && this.textures.exists(sheetKey);
 
-      if (key && this.textures.exists(key)) {
+      if (key && (useSheet || this.textures.exists(key))) {
         let img = this.sprites.get(e.id);
-        if (!img) { img = this.add.image(px, py, key); this.sprites.set(e.id, img); }
-        else img.setTexture(key);
+        if (!img) { img = this.add.image(px, py, useSheet ? sheetKey! : key, useSheet ? 0 : undefined); this.sprites.set(e.id, img); }
         const box = boxTiles(e) * sx;
         const scale = box / Math.max(img.width, img.height || 1);
+        // ground shadow under the sprite
+        if (e.kind !== 'tower') {
+          this.fxUnder.fillStyle(0x000000, 0.28).fillEllipse(px, py + box * 0.42, box * 0.7, box * 0.26);
+        }
         img.setScale(scale).setPosition(px, py).setDepth(py).setVisible(true);
+        if (e.kind !== 'tower') img.setFlipX(this.flip ? e.side === 'A' : e.side === 'B');
         this.hpBar(px, py - box / 2 - 7, box * 0.8, e, e.kind === 'tower' && e.towerType !== 'king');
       } else {
         const dead = this.sprites.get(e.id);
@@ -164,6 +248,15 @@ class FieldScene extends Phaser.Scene {
     for (const [id, txt] of this.labels) {
       if (!seen.has(id)) { txt.destroy(); this.labels.delete(id); }
     }
+    for (const id of this.display.keys()) {
+      if (!seen.has(id)) this.display.delete(id);
+    }
+
+    this.drawFx(dt);
+
+    if (this.fastPhase) {
+      g.fillStyle(0xffb300, 0.07).fillRect(0, 0, this.w, this.h);
+    }
 
     if (this.marker) {
       const { px, py } = this.toPx(this.marker.x, this.marker.y);
@@ -173,6 +266,42 @@ class FieldScene extends Phaser.Scene {
       g.lineStyle(3, col, 0.95).strokeCircle(px, py, r);
       g.lineStyle(2, col, 0.6).strokeCircle(px, py, r * 0.5);
     }
+  }
+
+  /** Step + draw projectiles, impact particles and spell rings. */
+  private drawFx(dt: number) {
+    const g = this.gfx;
+    const sx = this.sx();
+
+    for (const p of this.projectiles) {
+      p.t += dt;
+      const k = Math.min(1, p.t / p.dur);
+      const { px, py } = this.toPx(p.x0 + (p.x1 - p.x0) * k, p.y0 + (p.y1 - p.y0) * k);
+      g.fillStyle(p.color, 0.95).fillCircle(px, py, Math.max(2.5, sx * 0.16));
+      g.fillStyle(0xffffff, 0.5).fillCircle(px, py, Math.max(1.2, sx * 0.07));
+    }
+    this.projectiles = this.projectiles.filter((p) => p.t < p.dur);
+
+    for (const pt of this.particles) {
+      pt.life -= dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      const { px, py } = this.toPx(pt.x, pt.y);
+      const a = Math.max(0, pt.life / pt.maxLife);
+      const s = Math.max(2, sx * 0.14);
+      g.fillStyle(pt.color, a * 0.9).fillRect(px - s / 2, py - s / 2, s, s);
+    }
+    this.particles = this.particles.filter((p) => p.life > 0);
+
+    for (const r of this.rings) {
+      r.t += dt;
+      const k = Math.min(1, r.t / r.dur);
+      const { px, py } = this.toPx(r.x, r.y);
+      const rad = r.radius * sx * (0.4 + 0.6 * k);
+      g.lineStyle(3, 0xffc46b, (1 - k) * 0.9).strokeCircle(px, py, rad);
+      g.fillStyle(0xffc46b, (1 - k) * 0.18).fillCircle(px, py, rad);
+    }
+    this.rings = this.rings.filter((r) => r.t < r.dur);
   }
 
   private drawShape(px: number, py: number, sx: number, e: EntitySnapshot) {
@@ -293,6 +422,8 @@ export class GameField {
 
   setFlip(flip: boolean) { this.flip = flip; }
   render(entities: EntitySnapshot[]) { this.scene?.setData2(entities, this.flip); }
+  addEvents(events: AttackEvent[]) { this.scene?.addEvents(events); }
+  setFastPhase(on: boolean) { this.scene?.setFastPhase(on); }
 
   /** Map a viewport point (clientX/clientY) to a field tile, or null if outside. */
   screenToTile(clientX: number, clientY: number): FieldTap | null {

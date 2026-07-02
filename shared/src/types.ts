@@ -78,6 +78,22 @@ export interface CardCooldown {
   total: number; // full recharge this card was set to (for overlay fills)
 }
 
+/**
+ * A combat event within the last snapshot window (visual only — damage is
+ * already applied server-side). The client draws projectiles for ranged
+ * attacks and impact/AoE effects at the target point.
+ */
+export interface AttackEvent {
+  kind: 'attack' | 'spell';
+  side: Side; // attacker's side
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  ranged: boolean; // draw a projectile from -> to
+  radius?: number; // spell AoE radius (tiles)
+}
+
 export interface BattleSnapshot {
   tick: number;
   timeLeft: number; // seconds remaining in the round
@@ -92,6 +108,7 @@ export interface BattleSnapshot {
   mode?: BattleModeInfo;
   cooldowns?: CardCooldown[]; // your trio's recharge state
   finalPhase?: boolean; // last minute: cooldowns tick twice as fast
+  events?: AttackEvent[]; // combat FX since the previous snapshot
 }
 
 export type MatchOutcome = 'win' | 'loss';

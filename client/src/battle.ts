@@ -135,6 +135,8 @@ export async function startBattle(nav: Nav): Promise<void> {
     yourSide = snap.yourSide;
     if (field) field.setFlip(yourSide === 'B');
     field?.render(snap.entities);
+    if (snap.events?.length) field?.addEvents(snap.events);
+    field?.setFastPhase(cooldownMode ? !!snap.finalPhase : snap.doubleElixir);
 
     if (cooldownMode) {
       trio?.setCooldowns(snap.cooldowns ?? [], snap.finalPhase ? 2 : 1);

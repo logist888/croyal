@@ -15,7 +15,11 @@ import {
   CARDS, getCard, levelStatMultiplier, canDeployTroop,
   type Side, type TowerType, type CardDef, type TargetKind, type BattleConfig,
   type BattleSnapshot, type EntitySnapshot, type MatchResult, type CardCooldown,
+  type AttackEvent,
 } from '@croyal/shared';
+
+/** FX events kept per snapshot window (visual only; bounded for payload size). */
+const MAX_EVENTS_PER_WINDOW = 60;
 
 type MarchState = 'march' | 'intercept' | 'engage';
 
@@ -74,6 +78,8 @@ export class Simulation {
   private cooldowns: Record<Side, Map<string, number>> = { A: new Map(), B: new Map() };
   /** threat entity id -> interceptor entity id (fixed-lane intercept rule). */
   private interceptAssignments = new Map<string, string>();
+  /** Combat FX since the last snapshot broadcast (cleared by the match loop). */
+  private events: AttackEvent[] = [];
   private seq = 0;
   private towersDestroyed: Record<Side, number> = { A: 0, B: 0 };
   private towerDamage: Record<Side, number> = { A: 0, B: 0 };
@@ -293,12 +299,22 @@ export class Simulation {
     const radius = card.spellRadius ?? 1;
     const dmg = Math.round((card.spellDamage ?? 0) * levelStatMultiplier(this.cardLevel(side, card.id)));
     const enemy = otherSide(side);
+    this.pushEvent({ kind: 'spell', side, fromX: x, fromY: y, toX: x, toY: y, ranged: false, radius });
     for (const e of this.entities.values()) {
       if (e.side !== enemy || e.hp <= 0) continue;
       if (dist(e.x, e.y, x, y) <= radius) {
         this.applyDamage(e, dmg, side);
       }
     }
+  }
+
+  private pushEvent(ev: AttackEvent): void {
+    if (this.events.length < MAX_EVENTS_PER_WINDOW) this.events.push(ev);
+  }
+
+  /** Called by the match loop after a snapshot broadcast. */
+  clearEvents(): void {
+    this.events = [];
   }
 
   // --- Targeting & combat ---
@@ -611,6 +627,15 @@ export class Simulation {
   }
 
   private attack(e: Entity, target: Entity): void {
+    this.pushEvent({
+      kind: 'attack',
+      side: e.side,
+      fromX: round2(e.x),
+      fromY: round2(e.y),
+      toX: round2(target.x),
+      toY: round2(target.y),
+      ranged: e.range > 2,
+    });
     this.applyDamage(target, e.damage, e.side);
     if (e.splashRadius > 0) {
       const enemy = otherSide(e.side);
@@ -735,6 +760,7 @@ export class Simulation {
       mode: { economy: this.config.economy, deployment: this.config.deployment },
       cooldowns,
       finalPhase: this.finalPhase(),
+      events: this.events.length ? [...this.events] : undefined,
     };
   }
 
