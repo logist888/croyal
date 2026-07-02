@@ -36,7 +36,11 @@ export async function startBattle(nav: Nav): Promise<void> {
   let fastBannerShown = false;
   let seenIds: Set<string> | null = null;
   let statusTimer = 0;
-  const cooldownMode = state.mode.economy === 'cooldown';
+  // The two mode axes are independent: economy picks the HAND (trio with
+  // recharge overlays vs elixir bar + 4-card cycle), deployment picks the
+  // INPUT (tap-to-play on lanes vs coordinate placement).
+  const cooldownEcon = state.mode.economy === 'cooldown';
+  const lanes = state.mode.deployment === 'fixed-lane';
 
   // Mirror of the server's deploy rule, used for the live drag preview.
   function validateDeploy(cardId: string, tile: FieldTap): boolean {
@@ -75,7 +79,7 @@ export async function startBattle(nav: Nav): Promise<void> {
   }
 
   function buildBattleUI() {
-    const roundSeconds = cooldownMode ? COOLDOWN_BATTLE_CONFIG.roundSeconds : LEGACY_BATTLE_CONFIG.roundSeconds;
+    const roundSeconds = cooldownEcon ? COOLDOWN_BATTLE_CONFIG.roundSeconds : LEGACY_BATTLE_CONFIG.roundSeconds;
     const root = document.createElement('div');
     root.className = 'hud';
     root.innerHTML = `
@@ -86,10 +90,10 @@ export async function startBattle(nav: Nav): Promise<void> {
         <span id="timer" class="chip timer">${fmtTime(roundSeconds)}</span>
       </div>
       <div id="arena" class="arena-host"></div>
-      ${cooldownMode
-        ? `<div class="status-line" id="status-line"></div>
-           <div class="aim-hint" id="aim-hint" style="display:none">${t('battle.aimHint')}</div>
-           <div class="handbar"><div class="hand" id="hand"></div></div>`
+      ${lanes ? `<div class="status-line" id="status-line"></div>` : ''}
+      <div class="aim-hint" id="aim-hint" style="display:none">${t('battle.aimHint')}</div>
+      ${cooldownEcon
+        ? `<div class="handbar"><div class="hand" id="hand"></div></div>`
         : `${elixirBarHtml()}
            <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`}`;
     setUI(root);
@@ -99,18 +103,33 @@ export async function startBattle(nav: Nav): Promise<void> {
     };
 
     const handEl = root.querySelector<HTMLDivElement>('#hand')!;
-    if (cooldownMode) {
-      // Tap-to-play: troops go out on your lane instantly, spells aim first.
+    if (cooldownEcon) {
+      // Trio hand. On lanes, troops go out instantly and spells aim first;
+      // with free placement every card arms and a field tap places it.
       trio = buildTrioHand(handEl, {
         onPlay: (cardId) => {
           const card = getCard(cardId);
           if (!card) return;
-          if (card.type === 'spell') {
+          if (!lanes || card.type === 'spell') {
             setAiming(aimingSpell === cardId ? null : cardId);
             return;
           }
           setAiming(null);
           socket.send({ t: 'deploy', cardId });
+          haptic('light');
+        },
+      });
+    } else if (lanes) {
+      // Elixir hand on fixed lanes: tap a troop to send it out, spells stay
+      // selected and are aimed by a field tap.
+      hand = buildHand(handEl, {
+        onSelect: () => {
+          const id = hand?.selected();
+          if (!id) return;
+          const card = getCard(id);
+          if (!card || card.type === 'spell') return; // aim via field tap
+          socket.send({ t: 'deploy', cardId: id });
+          hand?.clearSelection();
           haptic('light');
         },
       });
@@ -136,12 +155,44 @@ export async function startBattle(nav: Nav): Promise<void> {
     if (field) field.setFlip(yourSide === 'B');
     field?.render(snap.entities);
     if (snap.events?.length) field?.addEvents(snap.events);
-    field?.setFastPhase(cooldownMode ? !!snap.finalPhase : snap.doubleElixir);
+    const fast = snap.finalPhase ?? snap.doubleElixir;
+    field?.setFastPhase(fast);
 
-    if (cooldownMode) {
-      trio?.setCooldowns(snap.cooldowns ?? [], snap.finalPhase ? 2 : 1);
+    // HAND updates follow the economy.
+    if (cooldownEcon) {
+      trio?.setCooldowns(snap.cooldowns ?? [], fast ? 2 : 1);
 
-      // Status line: announce units that just entered the field.
+      // One-time "final minute" banner when the fast recharge kicks in.
+      if (fast && !fastBannerShown) {
+        fastBannerShown = true;
+        haptic('light');
+        const banner = document.createElement('div');
+        banner.className = 'fast-banner';
+        banner.textContent = t('battle.fastPhase');
+        root.appendChild(banner);
+        window.setTimeout(() => banner.remove(), 4000);
+      }
+    } else {
+      const myElixir = snap.elixir[yourSide];
+      setElixir(root, myElixir);
+      hand?.setHand(snap.hand, snap.nextCard, myElixir);
+      setNextCard(root, snap.nextCard);
+    }
+
+    // Placement zones matter only with free placement.
+    if (!lanes) {
+      const enemy = otherSide(yourSide);
+      let leftAlive = false, rightAlive = false;
+      for (const e of snap.entities) {
+        if (e.kind === 'tower' && e.side === enemy && e.towerType?.startsWith('princess') && e.hp > 0) {
+          if (e.x < ARENA_WIDTH / 2) leftAlive = true; else rightAlive = true;
+        }
+      }
+      enemyDown = { left: !leftAlive, right: !rightAlive };
+    }
+
+    // Status line (lanes): announce units that just entered the field.
+    if (lanes) {
       const ids = new Set(snap.entities.map((e) => e.id));
       if (seenIds) {
         let mine: string | null = null;
@@ -160,38 +211,12 @@ export async function startBattle(nav: Nav): Promise<void> {
         }
       }
       seenIds = ids;
-
-      // One-time "final minute" banner when the fast phase kicks in.
-      if (snap.finalPhase && !fastBannerShown) {
-        fastBannerShown = true;
-        haptic('light');
-        const banner = document.createElement('div');
-        banner.className = 'fast-banner';
-        banner.textContent = t('battle.fastPhase');
-        root.appendChild(banner);
-        window.setTimeout(() => banner.remove(), 4000);
-      }
-    } else {
-      // Which enemy princess towers are down → opens that lane for deployment.
-      const enemy = otherSide(yourSide);
-      let leftAlive = false, rightAlive = false;
-      for (const e of snap.entities) {
-        if (e.kind === 'tower' && e.side === enemy && e.towerType?.startsWith('princess') && e.hp > 0) {
-          if (e.x < ARENA_WIDTH / 2) leftAlive = true; else rightAlive = true;
-        }
-      }
-      enemyDown = { left: !leftAlive, right: !rightAlive };
-      const myElixir = snap.elixir[yourSide];
-      setElixir(root, myElixir);
-      hand?.setHand(snap.hand, snap.nextCard, myElixir);
-      setNextCard(root, snap.nextCard);
     }
 
     const timer = root.querySelector<HTMLSpanElement>('#timer');
     if (timer) {
-      const fast = cooldownMode ? !!snap.finalPhase : snap.doubleElixir;
       timer.textContent = fmtTime(snap.timeLeft) + (fast ? ' ×2' : '');
-      timer.classList.toggle('fast-phase', fast);
+      timer.classList.toggle('fast-phase', !!fast);
     }
     const score = root.querySelector<HTMLSpanElement>('#score');
     if (score) {
@@ -262,17 +287,19 @@ export async function startBattle(nav: Nav): Promise<void> {
       const { w, h } = computeFieldSize();
       root = buildBattleUI();
       field = new GameField('arena', w, h, (tap) => {
-        if (cooldownMode) {
-          // Field taps only aim spells — troops auto-march from the lane spawn.
-          if (!aimingSpell) return;
-          if (!isWithinField(tap.x, tap.y)) return;
+        // Armed trio card (spell aim on lanes; any card with free placement).
+        if (aimingSpell) {
+          if (!validateDeploy(aimingSpell, tap)) return;
           socket.send({ t: 'deploy', cardId: aimingSpell, x: tap.x, y: tap.y });
           setAiming(null);
           haptic('light');
           return;
         }
+        // Legacy-hand selection: on lanes only spells reach here (troops
+        // deploy on card tap); with free placement it's the tap-tap fallback.
         const id = hand?.selected();
         if (!id) return;
+        if (lanes && !isWithinField(tap.x, tap.y)) return;
         socket.send({ t: 'deploy', cardId: id, x: tap.x, y: tap.y });
         hand?.clearSelection();
         haptic('light');

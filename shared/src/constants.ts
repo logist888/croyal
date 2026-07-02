@@ -133,6 +133,16 @@ export const LANE_SPAWN: Record<Side, { x: number; y: number }> = {
   B: { x: BRIDGE_X[0], y: ARENA_HEIGHT * 0.24 },
 };
 
+/**
+ * Fixed-lane BUILDING spot: center-front of your own half, where a defensive
+ * building's range covers the enemy's incoming lane (buildings at the troop
+ * lane spawn would cover nothing — enemy traffic uses the mirrored lane).
+ */
+export const LANE_BUILDING_SPAWN: Record<Side, { x: number; y: number }> = {
+  A: { x: ARENA_WIDTH / 2, y: RIVER_Y + 5 },
+  B: { x: ARENA_WIDTH / 2, y: RIVER_Y - 5 },
+};
+
 /** The enemy princess tower a side's lane march heads for (before the king). */
 export function laneTargetTower(side: Side): { enemySide: Side; towerType: TowerType } {
   return side === 'A'

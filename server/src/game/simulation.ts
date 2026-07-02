@@ -10,7 +10,7 @@ import {
   ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HALF_HEIGHT, BRIDGE_X,
   ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
   KING_TOWER, PRINCESS_TOWER, TOWER_POSITIONS, otherSide,
-  LANE_SPAWN, laneTargetTower, ENGAGE_X_WINDOW, UNIT_BODY_RADIUS, towerBodyRadius,
+  LANE_SPAWN, LANE_BUILDING_SPAWN, laneTargetTower, ENGAGE_X_WINDOW, UNIT_BODY_RADIUS, towerBodyRadius,
   DEFAULT_BATTLE_CONFIG,
   CARDS, getCard, levelStatMultiplier, canDeployTroop,
   type Side, type TowerType, type CardDef, type TargetKind, type BattleConfig,
@@ -222,10 +222,13 @@ export class Simulation {
       px = x;
       py = y;
     } else if (this.config.deployment === 'fixed-lane') {
-      // The player only chooses WHICH card and WHEN — never where.
+      // The player only chooses WHICH card and WHEN — never where. Troops go
+      // to the lane spawn; buildings to the central defensive spot (their
+      // range must cover the enemy's incoming lane, not your outgoing one).
       if (x !== undefined || y !== undefined) return { ok: false, error: 'fixed-lane: no placement' };
-      px = LANE_SPAWN[side].x;
-      py = LANE_SPAWN[side].y;
+      const spot = card.type === 'building' ? LANE_BUILDING_SPAWN[side] : LANE_SPAWN[side];
+      px = spot.x;
+      py = spot.y;
     } else {
       if (x === undefined || y === undefined) return { ok: false, error: 'placement required' };
       if (!this.canDeployAt(side, x, y)) return { ok: false, error: 'illegal deploy zone' };
@@ -335,15 +338,17 @@ export class Simulation {
   }
 
   /**
-   * Static defenders (towers and buildings) re-scan every tick and only shoot
-   * things that move — never each other's towers across the map.
+   * Static defenders (towers and buildings) re-scan every tick. Towers only
+   * shoot things that move — never each other across the map; buildings may
+   * also siege a tower that happens to be in reach (build-13 parity).
    */
   private acquireDefenderTarget(e: Entity): Entity | null {
     const enemy = otherSide(e.side);
     let best: Entity | null = null;
     let bestD = Infinity;
     for (const t of this.entities.values()) {
-      if (t.side !== enemy || t.hp <= 0 || t.kind === 'tower') continue;
+      if (t.side !== enemy || t.hp <= 0) continue;
+      if (t.kind === 'tower' && e.kind === 'tower') continue;
       if (!this.canHit(e, t)) continue;
       const d = dist(e.x, e.y, t.x, t.y);
       if (d <= this.reachOf(e, t) && d < bestD) {
@@ -405,17 +410,24 @@ export class Simulation {
   /**
    * Move toward a goal. Ground units route across the river via a bridge —
    * the crossing waypoint sits just BEYOND the water so units never stall on
-   * the river line. While inside the river band they are clamped to the
-   * bridge deck (hard rule: no walking on water).
+   * the river line (a build-13 bug froze side-A units there forever).
+   * The hard collision rules (no walking on water, never stand inside a
+   * tower) apply in fixed-lane mode only — legacy movement stays untouched
+   * for rollback fidelity.
    */
   private moveToward(e: Entity, tx: number, ty: number, dt: number, preferredBridgeX?: number): void {
     let gx = tx;
     let gy = ty;
+    let crossingBridge: number | null = null;
     if (!e.flying && crossesRiver(e.y, ty)) {
-      const bridge = preferredBridgeX
+      crossingBridge = preferredBridgeX
         ?? BRIDGE_X.reduce((a, b) => (Math.abs(b - e.x) < Math.abs(a - e.x) ? b : a), BRIDGE_X[0]);
-      gx = bridge;
-      gy = ty < e.y ? RIVER_Y - (RIVER_HALF_HEIGHT + 0.3) : RIVER_Y + (RIVER_HALF_HEIGHT + 0.3);
+      const ownBankY = e.y > RIVER_Y ? RIVER_Y + (RIVER_HALF_HEIGHT + 0.3) : RIVER_Y - (RIVER_HALF_HEIGHT + 0.3);
+      const farBankY = e.y > RIVER_Y ? RIVER_Y - (RIVER_HALF_HEIGHT + 0.3) : RIVER_Y + (RIVER_HALF_HEIGHT + 0.3);
+      gx = crossingBridge;
+      // Two-stage: first walk along your own bank to the bridge head, then
+      // cross straight over the deck — never enter the water sideways.
+      gy = Math.abs(e.x - crossingBridge) > 0.2 ? ownBankY : farBankY;
     }
     const d = dist(e.x, e.y, gx, gy);
     const step = e.moveSpeed * dt;
@@ -426,15 +438,21 @@ export class Simulation {
       e.x += ((gx - e.x) / d) * step;
       e.y += ((gy - e.y) / d) * step;
     }
-    this.clampCollisions(e);
+    if (this.config.deployment === 'fixed-lane') this.clampCollisions(e, crossingBridge);
   }
 
-  /** Hard collision rules: no water off-bridge, never stand inside a tower. */
-  private clampCollisions(e: Entity): void {
+  /** Hard collision rules (fixed-lane): no water off-bridge, never stand inside a tower. */
+  private clampCollisions(e: Entity, crossingBridge: number | null): void {
     if (e.flying) return;
     if (Math.abs(e.y - RIVER_Y) <= RIVER_HALF_HEIGHT + 0.05) {
-      const bridge = BRIDGE_X.reduce((a, b) => (Math.abs(b - e.x) < Math.abs(a - e.x) ? b : a), BRIDGE_X[0]);
-      e.x = bridge;
+      if (crossingBridge !== null) {
+        // crossing: stay on the deck of the bridge being used (no teleport
+        // to whatever bridge happens to be nearest)
+        e.x = crossingBridge;
+      } else {
+        // grazing the bank while fighting/chasing: step back out of the water
+        e.y = e.y < RIVER_Y ? RIVER_Y - (RIVER_HALF_HEIGHT + 0.1) : RIVER_Y + (RIVER_HALF_HEIGHT + 0.1);
+      }
     }
     for (const t of this.entities.values()) {
       if (t.kind !== 'tower' || t.hp <= 0) continue;
@@ -607,7 +625,8 @@ export class Simulation {
       return;
     }
 
-    // Free-placement units: nearest-entity lock (legacy behavior).
+    // Free-placement units: nearest-entity lock with the build-13 flat reach
+    // (rollback fidelity — body radii are a fixed-lane rule).
     let target: Entity | null | undefined = e.targetId ? this.entities.get(e.targetId) : null;
     if (!target || target.hp <= 0 || !this.canHit(e, target)) {
       target = this.acquireTarget(e);
@@ -616,7 +635,7 @@ export class Simulation {
     if (!target) return;
 
     const d = dist(e.x, e.y, target.x, target.y);
-    if (d <= this.reachOf(e, target)) {
+    if (d <= e.range + 0.5) {
       if (e.attackCd <= 0 && e.damage > 0) {
         this.attack(e, target);
         e.attackCd = e.hitSpeed;

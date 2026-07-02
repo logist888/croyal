@@ -29,7 +29,7 @@ export const api = {
   auth: (body: { initData?: string; devUser?: { id: number; username?: string } }) =>
     req<AuthResponse>('/api/auth', { method: 'POST', body: JSON.stringify(body) }),
   register: (body: { initData?: string; devUser?: { id: number }; nickname: string; language: string }) =>
-    req<{ token: string; profile: PlayerProfile }>('/api/register', { method: 'POST', body: JSON.stringify(body) }),
+    req<{ token: string; profile: PlayerProfile; mode?: BattleModeInfo }>('/api/register', { method: 'POST', body: JSON.stringify(body) }),
   me: () => req<{ profile: PlayerProfile; mode?: BattleModeInfo }>('/api/me'),
   upgradeCard: (id: string) => req<{ profile: PlayerProfile }>(`/api/cards/${id}/upgrade`, { method: 'POST' }),
   updateTrio: (trio: string[]) =>

@@ -127,7 +127,7 @@ export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?
     }
     submit.disabled = true;
     try {
-      const { token, profile } = await api.register({
+      const { token, profile, mode } = await api.register({
         nickname: name,
         language: getLang(),
         devUser: opts.telegramId ? { id: opts.telegramId } : undefined,
@@ -135,6 +135,7 @@ export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?
       });
       state.token = token;
       state.profile = profile;
+      if (mode) state.mode = mode; // the server's battle core decides the HUD/onboarding path
       setLang(profile.language as Lang);
       haptic('success');
       nav.toMenu();

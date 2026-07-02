@@ -49,4 +49,18 @@ describe('battle simulation (legacy elixir / free placement)', () => {
     expect(sim.handOf('A').length).toBe(4);
     expect(sim.getSnapshot('A').nextCard).toBeTruthy();
   });
+
+  it('buildings can still siege a tower in reach (build-13 parity)', () => {
+    const sim = new Simulation(Array(8).fill('bastion'), [...DEFAULT_DECK], 3, {}, {}, LEGACY_BATTLE_CONFIG);
+    // Deploy on own half, then move it to the king's doorstep via direct
+    // entity access — asserts the targeting rule: buildings may hit towers.
+    const ok = sim.deploy('A', 'bastion', 9, 22);
+    expect(ok.ok).toBe(true);
+    const b = [...sim.entities.values()].find((e) => e.kind === 'building')!;
+    b.x = 9; b.y = 5.5; // in reach of B king (9,2), range 5.5
+    const king = [...sim.entities.values()].find((e) => e.side === 'B' && e.towerType === 'king')!;
+    const hp0 = king.hp;
+    for (let i = 0; i < 60; i++) sim.step(0.05);
+    expect(king.hp).toBeLessThan(hp0);
+  });
 });

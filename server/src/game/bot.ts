@@ -3,7 +3,7 @@
  * the Match controller owns the clock and calls this on its own schedule.
  */
 import {
-  ARENA_WIDTH, RIVER_Y, TOWER_POSITIONS, otherSide, getCard,
+  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, TOWER_POSITIONS, otherSide, getCard,
   BOT_PLAY_INTERVAL_SECONDS, BOT_PLAY_INTERVAL_FINAL_SECONDS, BOT_PLAY_JITTER_SECONDS,
   type Side,
 } from '@croyal/shared';
@@ -41,9 +41,22 @@ export function pickBotAction(sim: Simulation, side: Side, tickCount: number): B
   }
 
   const card = getCard(cardId)!;
-  if (card.type === 'spell') return { cardId, ...spellAim(sim, side) };
+  if (card.type === 'spell') {
+    // Legacy parity: the build-13 bot dropped spells on a fixed point near the
+    // enemy king; only the cooldown-model bot aims at real targets.
+    if (config.economy === 'elixir') return { cardId, ...legacySpellSpot(side, tickCount) };
+    return { cardId, ...spellAim(sim, side) };
+  }
   if (config.deployment === 'fixed-lane') return { cardId }; // server picks the lane spawn
   return { cardId, ...troopSpot(side, tickCount) };
+}
+
+/** Build-13 bot spell drop: the enemy king area, lane-jittered. */
+function legacySpellSpot(side: Side, tickCount: number): { x: number; y: number } {
+  const lane = tickCount % 2 === 0 ? ARENA_WIDTH * 0.25 : ARENA_WIDTH * 0.75;
+  const x = lane + ((tickCount % 5) - 2) * 0.4;
+  const y = side === 'A' ? 3 : ARENA_HEIGHT - 3;
+  return { x, y };
 }
 
 /** Free-placement troop spot: own half, alternating lanes near the river. */

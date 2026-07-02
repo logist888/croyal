@@ -58,6 +58,19 @@ describe('bot policy (cooldown model)', () => {
 });
 
 describe('bot policy (legacy elixir model)', () => {
+  it('drops spells on the build-13 fixed point (no smart aiming in legacy)', () => {
+    const sim = new Simulation(['meteor', 'archers', 'footman', 'ratpack', 'volley', 'bastion', 'colossus', 'blademaster'],
+      [...DEFAULT_DECK], 1, {}, {}, LEGACY_BATTLE_CONFIG);
+    // find a tick where the bot picks a spell
+    for (let t = 0; t < 40; t++) {
+      const a = pickBotAction(sim, 'A', t);
+      if (a && getCard(a.cardId)!.type === 'spell') {
+        expect(a.y).toBe(3); // side A drops at the enemy king band, y=3
+        return;
+      }
+    }
+  });
+
   it('waits for elixir >= 4 and provides coordinates', () => {
     const sim = new Simulation([...DEFAULT_DECK], [...DEFAULT_DECK], 1, {}, {}, LEGACY_BATTLE_CONFIG);
     const action = pickBotAction(sim, 'B', 0);

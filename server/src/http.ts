@@ -64,7 +64,7 @@ export function createApp() {
       res.json({ registered: true, token, profile: publicProfile(existing), mode: battleMode() });
       return;
     }
-    res.json({ registered: false, telegramId: auth.user.id, suggestedNickname: auth.user.username ?? '' });
+    res.json({ registered: false, telegramId: auth.user.id, suggestedNickname: auth.user.username ?? '', mode: battleMode() });
   });
 
   // --- Registration: nickname is chosen ONCE and is immutable thereafter ---

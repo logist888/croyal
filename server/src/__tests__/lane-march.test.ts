@@ -100,6 +100,20 @@ describe('fixed-lane auto-march', () => {
     expect(u.hp).toBeLessThan(hp0);
   });
 
+  it('buildings deploy at the central defensive spot and cover the enemy lane', () => {
+    const s = sim(['bastion', 'archers', 'footman']);
+    s.deploy('A', 'bastion');
+    const b = [...s.entities.values()].find((e) => e.kind === 'building');
+    expect(b).toBeDefined();
+    expect(b!.x).toBeCloseTo(9, 3); // center, NOT the troop lane spawn
+    expect(b!.y).toBeCloseTo(20, 3);
+    // an enemy marcher on ITS lane (my left) gets shot while passing
+    s.deploy('B', 'footman');
+    const [foe] = unitsOf(s, 'B');
+    run(s, 20);
+    if (foe.hp > 0) expect(foe.hp).toBeLessThan(foe.maxHp);
+  });
+
   it('destroying the king ends the match instantly', () => {
     // Give A a heavy trio and B nothing to defend with beyond towers.
     const s = sim();
