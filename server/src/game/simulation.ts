@@ -755,6 +755,12 @@ export class Simulation {
     return this.getTower(enemySide, otherPrincess) ?? null;
   }
 
+  /**
+   * How far a building-hunter (targetsBuildingsOnly) will leave the lane to
+   * smash an enemy defense building — the classic tank-vs-building counterplay.
+   */
+  private static readonly BUILDING_DETOUR = 6;
+
   /** Nearest enemy unit/building already within fighting reach of the lane. */
   private findEngagement(e: Entity): Entity | null {
     const enemy = otherSide(e.side);
@@ -762,9 +768,23 @@ export class Simulation {
     let bestD = Infinity;
     for (const t of this.entities.values()) {
       if (t.side !== enemy || t.hp <= 0 || t.kind === 'tower') continue;
+      if (e.targetsBuildingsOnly && t.kind !== 'building') continue;
       if (!this.canHit(e, t)) continue;
-      if (Math.abs(t.x - e.x) > ENGAGE_X_WINDOW) continue;
       const d = dist(e.x, e.y, t.x, t.y);
+      if (t.kind === 'building') {
+        // Defense buildings sit off-lane (the central spot). A building that
+        // can threaten the lane is engageable: ranged marchers trade from
+        // reach; building-hunters divert a short detour to demolish it.
+        // Without this, defense buildings were literally unattackable.
+        if (Math.abs(t.x - e.x) > Math.max(ENGAGE_X_WINDOW, t.range)) continue;
+        const maxD = e.targetsBuildingsOnly ? Simulation.BUILDING_DETOUR : this.reachOf(e, t) + 0.4;
+        if (d <= maxD && d < bestD) {
+          bestD = d;
+          best = t;
+        }
+        continue;
+      }
+      if (Math.abs(t.x - e.x) > ENGAGE_X_WINDOW) continue;
       if (d <= this.reachOf(e, t) + 0.4 && d < bestD) {
         bestD = d;
         best = t;
@@ -798,14 +818,14 @@ export class Simulation {
     }
 
     // Natural contact fighting on the lane (melee blocking, ranged trades).
-    if (!e.targetsBuildingsOnly) {
-      const foe = this.findEngagement(e);
-      if (foe) {
-        e.marchState = 'engage';
-        e.targetId = foe.id;
-        this.attackOrChase(e, foe, dt);
-        return;
-      }
+    // Building-hunters pass through here too: findEngagement only offers them
+    // enemy BUILDINGS (they still ignore troops and march for towers).
+    const foe = this.findEngagement(e);
+    if (foe) {
+      e.marchState = 'engage';
+      e.targetId = foe.id;
+      this.attackOrChase(e, foe, dt);
+      return;
     }
 
     // March: own bridge -> lane princess -> king.

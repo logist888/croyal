@@ -69,6 +69,50 @@ with original units and no Supercell assets.
 - Independent of interception, units naturally **engage** enemies that come
   within fighting reach on their lane (`ENGAGE_X_WINDOW`) — melee blocks melee
   on a bridge, ranged trades happen across the lane.
+- **Buildings are attackable** (build-15): a defense building that can threaten
+  the lane may be engaged — ranged marchers trade with it from reach, and
+  building-hunters (`targetsBuildingsOnly`: rams, tanks) divert up to a short
+  detour (6 tiles) to demolish it before resuming the march. Without this rule
+  the central building spot was outside every unit's engagement window and
+  defense buildings were literally unattackable (the balance harness caught it
+  as a 95% win rate for building-heavy trios).
+
+## Statuses, zones & card mechanics (build-15)
+- One unified status stack per entity: **slow, root, stun, rage, shield,
+  poison** — one instance per kind (strongest magnitude wins, duration
+  refreshes). Poison is damage-in-a-status; shield is an absorb pool consumed
+  before hp. Root and stun stop movement; stun also stops attacks. **Flyers are
+  immune to root.**
+- **Zones** (Firestorm, Venom Cloud, Blizzard, Sandstorm) are ground areas that
+  keep applying their status; they are NOT entities (never targeted, cap 12) and
+  their effect lingers 0.5s after leaving.
+- Troop abilities are pure card data (no per-card code): **charge** (chargers
+  and assassins — a heavy armed first hit, re-arms while marching), **healer**
+  (heals the most-wounded ally, never itself or towers), **chain** attacks,
+  **spawner** (produces token units — hornet / paper glider / skeleton — which
+  are not collectible), **rage aura**, **on-hit statuses**.
+- Design decisions: **assassins** are charge-ability troops (teleports don't
+  read on fixed lanes); **siege** buildings out-range the incoming lane but sit
+  ≥14 tiles from every enemy tower, so tower-sniping is geometrically
+  impossible; every theme ships at least one **anti-air** answer (test-pinned).
+- **Boss raid shim:** zone spells deal `magnitude × zoneSeconds` to the boss,
+  chain spells hit at full damage, and ally-utility effects (heal/rage/shield)
+  are no-ops against the boss.
+
+## Card catalog & league unlocks (build-15)
+- **80 cards** (10 themes × 8) defined in `shared/src/cards.ts`; stats come from
+  per-archetype budget formulas (`scripts/gen-catalog.mjs`) anchored on the 10
+  original prototype-approved cards, which stay untouched.
+- Each theme unlocks at a league (`shared/src/unlocks.ts`); the top two leagues
+  carry two themes each. **Everything onboarding hands out is always unlocked.**
+- The lock gates **use and drops**, not ownership: every account owns all cards
+  at level 1 and may upgrade them; the battle **trio** may only contain unlocked
+  cards (validated on save — a later trophy drop never breaks a saved trio),
+  and battle-chest drops draw only from the player's unlocked pool.
+- The full generated table lives in [CARDS.md](CARDS.md); the balance harness is
+  `npx tsx scripts/balance-harness.mjs` (designer tool, not CI — trophy-based
+  matchmaking makes same-tier balance the target, and unlock tiers are allowed
+  to out-power earlier ones).
 
 ## Win conditions — NO DRAWS
 - The round is hard-capped at **3 minutes** (`roundSeconds = 180` in the

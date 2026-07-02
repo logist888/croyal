@@ -144,7 +144,7 @@ export const CARDS: Record<string, CardDef> = {
   },
   wolfpack: {
     id: 'wolfpack', name: 'Wolf Pack', type: 'troop', rarity: 'common', role: 'Swarm', cost: 3, cooldownSec: 6, color: 0x90a4ae,
-    hp: 100, damage: 65, hitSpeed: 1.1, range: 1, moveSpeed: 1.5, targets: 'ground', count: 3,
+    hp: 120, damage: 70, hitSpeed: 1.1, range: 1, moveSpeed: 1.5, targets: 'ground', count: 3,
   },
   boarrider: {
     id: 'boarrider', name: 'Boar Rider', type: 'troop', rarity: 'rare', role: 'Charger', cost: 4, cooldownSec: 9, color: 0x8d6e63,
@@ -154,7 +154,7 @@ export const CARDS: Record<string, CardDef> = {
   druidess: {
     id: 'druidess', name: 'Druidess', type: 'troop', rarity: 'rare', role: 'Healer', cost: 4, cooldownSec: 9, color: 0x81c784,
     hp: 415, damage: 55, hitSpeed: 1, range: 5, moveSpeed: 1, targets: 'both',
-    ability: { kind: 'healer', healPerHit: 95 },
+    ability: { kind: 'healer', healPerHit: 130 },
   },
   beehive: {
     id: 'beehive', name: 'Beehive', type: 'building', rarity: 'common', role: 'Spawner', cost: 5, cooldownSec: 10, color: 0xffb300,
@@ -184,7 +184,7 @@ export const CARDS: Record<string, CardDef> = {
   },
   battering_ram: {
     id: 'battering_ram', name: 'Battering Ram', type: 'troop', rarity: 'rare', role: 'Charger', cost: 4, cooldownSec: 9, color: 0x4e342e,
-    hp: 1040, damage: 130, hitSpeed: 1.1, range: 1.2, moveSpeed: 1.2, targets: 'ground', targetsBuildingsOnly: true,
+    hp: 940, damage: 130, hitSpeed: 1.1, range: 1.2, moveSpeed: 1.2, targets: 'ground', targetsBuildingsOnly: true,
     ability: { kind: 'charge', speedMult: 1.5, firstHitMult: 2.2 },
   },
   cannon_tower: {
@@ -193,7 +193,7 @@ export const CARDS: Record<string, CardDef> = {
   },
   catapult: {
     id: 'catapult', name: 'Catapult', type: 'building', rarity: 'epic', role: 'Siege', cost: 5, cooldownSec: 12, color: 0x795548,
-    hp: 540, damage: 235, hitSpeed: 2.5, range: 7.8, moveSpeed: 0, targets: 'ground', splashRadius: 1.6, lifetimeSeconds: 30,
+    hp: 540, damage: 190, hitSpeed: 2.6, range: 7.8, moveSpeed: 0, targets: 'ground', splashRadius: 1.3, lifetimeSeconds: 30,
   },
   ironclad: {
     id: 'ironclad', name: 'Ironclad', type: 'troop', rarity: 'legendary', role: 'Tank', cost: 7, cooldownSec: 16, color: 0x455a64,
@@ -214,7 +214,7 @@ export const CARDS: Record<string, CardDef> = {
   },
   pyromancer: {
     id: 'pyromancer', name: 'Pyromancer', type: 'troop', rarity: 'rare', role: 'Splash', cost: 4, cooldownSec: 9, color: 0xff5722,
-    hp: 265, damage: 135, hitSpeed: 1.3, range: 4.5, moveSpeed: 1, targets: 'both', splashRadius: 1.4,
+    hp: 265, damage: 120, hitSpeed: 1.3, range: 4.5, moveSpeed: 1, targets: 'both', splashRadius: 1.3,
   },
   forge_turret: {
     id: 'forge_turret', name: 'Forge Turret', type: 'building', rarity: 'common', role: 'Defense', cost: 4, cooldownSec: 8, color: 0xbf360c,
@@ -226,13 +226,13 @@ export const CARDS: Record<string, CardDef> = {
   },
   infernal_hound: {
     id: 'infernal_hound', name: 'Infernal Hound', type: 'troop', rarity: 'legendary', role: 'Charger', cost: 4, cooldownSec: 11, color: 0xbf360c,
-    hp: 1305, damage: 180, hitSpeed: 1.1, range: 1.2, moveSpeed: 1.4, targets: 'ground',
+    hp: 1050, damage: 160, hitSpeed: 1.1, range: 1.2, moveSpeed: 1.3, targets: 'ground',
     ability: { kind: 'charge', speedMult: 1.6, firstHitMult: 2 },
   },
   firestorm: {
     id: 'firestorm', name: 'Firestorm', type: 'spell', rarity: 'rare', role: 'DoT', cost: 4, cooldownSec: 9, color: 0xff6d00,
     spellRadius: 2.5, spellDamage: 40,
-    effect: { kind: 'zone', status: 'poison', magnitude: 40, zoneSeconds: 5 },
+    effect: { kind: 'zone', status: 'poison', magnitude: 32, zoneSeconds: 5 },
   },
   frostling: {
     id: 'frostling', name: 'Frostling', type: 'troop', rarity: 'common', role: 'Swarm', cost: 2, cooldownSec: 4, color: 0x81d4fa,
@@ -276,7 +276,7 @@ export const CARDS: Record<string, CardDef> = {
   },
   stormcrow: {
     id: 'stormcrow', name: 'Storm Crow', type: 'troop', rarity: 'common', role: 'Air', cost: 3, cooldownSec: 6, color: 0x5c6bc0,
-    hp: 90, damage: 65, hitSpeed: 1.1, range: 1, moveSpeed: 1.4, targets: 'both', count: 3, flying: true,
+    hp: 115, damage: 70, hitSpeed: 1.1, range: 1, moveSpeed: 1.4, targets: 'both', count: 3, flying: true,
   },
   skylancer: {
     id: 'skylancer', name: 'Skylancer', type: 'troop', rarity: 'rare', role: 'Air', cost: 4, cooldownSec: 9, color: 0x7986cb,
@@ -294,7 +294,7 @@ export const CARDS: Record<string, CardDef> = {
   },
   thunder_mage: {
     id: 'thunder_mage', name: 'Thunder Mage', type: 'troop', rarity: 'epic', role: 'Chain', cost: 5, cooldownSec: 12, color: 0xfff176,
-    hp: 375, damage: 190, hitSpeed: 1.3, range: 5, moveSpeed: 1, targets: 'both',
+    hp: 450, damage: 190, hitSpeed: 1.3, range: 5, moveSpeed: 1, targets: 'both',
     ability: { kind: 'chain', jumps: 2, falloff: 0.7 },
   },
   tempest_djinn: {

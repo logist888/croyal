@@ -162,6 +162,47 @@ describe('rage aura & on-hit statuses', () => {
   });
 });
 
+describe('defense buildings are attackable (build-15 counterplay)', () => {
+  it('ranged marchers trade with a lane-threatening enemy building', () => {
+    // Sharpshooter: enough hp to survive the approach, enough range to trade.
+    // (Squishy archers legitimately get one-shot on the way in — siege counters
+    // swarms; the counter to siege is the building-hunter below.)
+    const s = sim(['sharpshooter', 'footman', 'colossus'], ['catapult', 'footman', 'colossus']);
+    s.deploy('B', 'catapult'); // central defensive spot, outranges the lane
+    s.deploy('A', 'sharpshooter');
+    const cat = [...s.entities.values()].find((e) => e.cardId === 'catapult')!;
+    run(s, 20);
+    // It must have been engaged and damaged — before this rule the building
+    // sat outside every engagement window and was unattackable.
+    expect(cat.hp).toBeLessThan(cat.maxHp);
+  });
+
+  it('building-hunters (ram) divert off-lane to demolish a defense building', () => {
+    const s = sim(['battering_ram', 'footman', 'colossus'], ['catapult', 'footman', 'colossus']);
+    s.deploy('B', 'catapult');
+    s.deploy('A', 'battering_ram');
+    let destroyed = false;
+    run(s, 30, () => {
+      if (![...s.entities.values()].some((e) => e.cardId === 'catapult')) destroyed = true;
+    });
+    expect(destroyed).toBe(true); // the ram left the lane, smashed it, and marches on
+  });
+
+  it('building-hunters still ignore enemy troops on the way', () => {
+    const s = sim(['battering_ram', 'footman', 'colossus'], ['footman', 'archers', 'colossus']);
+    s.deploy('A', 'battering_ram');
+    s.deploy('B', 'footman');
+    let engagedTroop = false;
+    run(s, 15, () => {
+      const ram = unitsOf(s, 'A', 'battering_ram')[0];
+      if (!ram || ram.marchState !== 'engage') return;
+      const t = ram.targetId ? s.entities.get(ram.targetId) : undefined;
+      if (t && t.kind === 'unit') engagedTroop = true;
+    });
+    expect(engagedTroop).toBe(false);
+  });
+});
+
 describe('siege geometry stays safe', () => {
   it('a siege building at the central spot cannot reach any enemy tower', () => {
     const s = sim(['catapult', 'archers', 'footman'], ['footman', 'archers', 'colossus']);

@@ -3,6 +3,43 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-15 — Content expansion: 80 cards, statuses, league unlocks, art pipeline
+The full content layer on top of the build-14 battle core. Four milestones.
+- **Status-effect framework (M1).** One unified stack (`Entity.statuses`):
+  slow / root / stun / rage / shield / poison; one instance per kind (max
+  magnitude, refreshed duration); poison is damage-in-a-status. Ground **zones**
+  (≤12, not entities — outside targeting) keep applying their status; effects
+  linger 0.5s after leaving. `effectiveMoveSpeed` is the single place speed math
+  happens, so a status-free unit is bit-identical to build-14 (legacy fidelity).
+- **Full mechanic set, data-driven (M1).** Troop abilities: charge (chargers AND
+  assassins), healer, chain attacks, spawner (token units: hornet / paper glider /
+  skeleton — not collectible), rage aura, on-hit statuses. Spell effects: poison /
+  slow zones, root (flyers immune), knockback+stun, allied heal / rage / shield,
+  chain lightning. Renderer: status tints, zone circles, shield arcs, heal/chain FX.
+  Boss raid shim: zones deal their total damage, utility no-ops (documented).
+- **80-card catalog (M2).** 10 themes × 8 from `docs/ART_PROMPT.ru.md`, stats from
+  per-archetype budget formulas anchored on the 10 shipped cards
+  (`scripts/gen-catalog.mjs`); `docs/CARDS.md` is now **generated**
+  (`scripts/gen-cards-doc.mjs`). ~70 Russian card names + role labels in i18n.
+- **League unlocks (M2).** `shared/unlocks.ts`: each theme tied to a league
+  (top two leagues carry two themes); grandfather set = everything onboarding
+  hands out. Trio saves reject locked cards (a later trophy drop never breaks an
+  existing trio); battle-chest drops draw from the unlocked pool. Collection
+  greys locked cards (upgrades still allowed); the trio picker shows them locked.
+- **Art pipeline (M3).** `scripts/art-jobs.mjs` (225 jobs from the roster doc) +
+  `scripts/gen-art.mjs` (gpt-image-1: resumable, `--only/--force/--dry-run`,
+  cost estimate ~$11 for the full set, proxy-aware) + slicer hardening (invalid
+  names skipped; the manifest now rebuilds from what exists on disk, so sliced
+  art survives raw-file renames). Generation runs once `OPENAI_API_KEY` is set.
+- **Balance + counterplay (M4).** `scripts/balance-harness.mjs` plays themed
+  trios round-robin. It exposed that off-lane defense buildings were literally
+  unattackable — now ranged marchers trade with lane-threatening buildings and
+  building-hunters (rams/tanks) divert up to 6 tiles to demolish them (classic
+  tank-vs-building counterplay). Siege dominance fell 95%→77%; remaining spread
+  follows the league progression curve (trophy matchmaking keeps games same-tier).
+- Tests 94 → **119** (catalog↔roster lockstep, unlock monotonicity/gates,
+  art-job invariants, themed full-match harness runs).
+
 ## build-14 — Battle core redesign: card cooldowns + fixed-lane auto-march
 The designer's (Мила) new battle vision, merged from the approved prototype and
 the updated GDD. Fully reversible; delivered in four milestones (M1–M4).

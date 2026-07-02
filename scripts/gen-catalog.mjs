@@ -5,6 +5,12 @@
  *
  * This is a REFERENCE/REBALANCE tool: the generated entries live in
  * shared/src/cards.ts as plain data; rerun and diff when retuning archetypes.
+ *
+ * ⚠ shared/src/cards.ts has received hand-tuned balance passes SINCE generation
+ * (see CHANGELOG build-15: catapult, battering_ram, infernal_hound, pyromancer,
+ * firestorm nerfs; druidess, wolfpack, stormcrow, thunder_mage buffs, verified
+ * with scripts/balance-harness.mjs). When regenerating, DIFF against cards.ts —
+ * never paste over it blindly.
  */
 
 const RARITY_MULT = { C: 1.0, R: 1.05, E: 1.12, L: 1.2 };
