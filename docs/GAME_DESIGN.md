@@ -110,8 +110,16 @@ fully preserved behind two config flags:
 
 Rollback is an **ops action** — restart the server with the legacy values; no
 code changes, no redeploy. Every card carries BOTH `cost` (elixir) and
-`cooldownSec`. The legacy behavior is pinned by its own test suite. The last
-pure-legacy build is commit `3c0354d` (local tag `fallback-elixir-freeplace`).
+`cooldownSec`. The legacy behavior is pinned by its own test suite.
+
+**Documented deviation from build-13:** two build-13 defects stay fixed in the
+legacy mode as well, because rolling back to them would restore a broken game,
+not a working one: (1) towers/buildings re-scan targets every tick — in
+build-13 towers locked a distant enemy tower at t=0 and never fired at
+approaching units; (2) the river-crossing waypoint sits just beyond the water —
+in build-13 side-A ground units froze on the river line forever. If EXACT
+build-13 behavior is ever needed (bugs included), that is the fallback commit
+`3c0354d` (local tag `fallback-elixir-freeplace`), not the flags.
 
 ## Tuning
 All numbers live in `shared/src/constants.ts` (arena, timing, lanes, towers, boss),

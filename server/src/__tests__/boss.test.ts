@@ -46,4 +46,28 @@ describe('boss raid cooldown economy', () => {
     expect(room.cooldownOf('u1', 'archers')).toBe(before);
     room.leave('u1');
   });
+
+  it('leave+rejoin cannot wipe raider cooldowns', () => {
+    const room = new BossRoom('clan5', () => {}, COOLDOWN_BATTLE_CONFIG);
+    room.join('u1', 'Raider', [...DEFAULT_TRIO], noop);
+    room.join('u2', 'Buddy', [...DEFAULT_TRIO], noop); // keeps the raid alive
+    room.deploy('u1', 'footman');
+    const cd = room.cooldownOf('u1', 'footman');
+    expect(cd).toBeGreaterThan(0);
+    room.leave('u1');
+    room.join('u1', 'Raider', [...DEFAULT_TRIO], noop);
+    expect(room.cooldownOf('u1', 'footman')).toBeCloseTo(cd, 1);
+    room.leave('u1');
+    room.leave('u2');
+  });
+
+  it('difficulty drops back to solo when a raider leaves', () => {
+    const room = new BossRoom('clan6', () => {});
+    room.join('u1', 'One', [...DEFAULT_DECK], noop);
+    room.join('u2', 'Two', [...DEFAULT_DECK], noop);
+    expect(room.difficultyMultiplier).toBe(2);
+    room.leave('u2');
+    expect(room.difficultyMultiplier).toBe(1);
+    room.leave('u1');
+  });
 });

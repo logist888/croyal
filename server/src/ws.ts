@@ -9,6 +9,11 @@ import { decodeClient, encode, type ServerMessage } from '@croyal/shared';
 import { store } from './store';
 import { gameManager } from './manager';
 
+/** Coordinates come off the wire as `unknown` in practice — only finite numbers pass. */
+function num(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
 export function attachWebSocket(server: Server): void {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
@@ -29,6 +34,12 @@ export function attachWebSocket(server: Server): void {
           send({ t: 'authError', error: 'invalid session' });
           return;
         }
+        // One identity per socket: silently swapping users would leak the
+        // previous identity's queue/match state past disconnect cleanup.
+        if (userId && userId !== user.id) {
+          send({ t: 'authError', error: 'socket already authenticated' });
+          return;
+        }
         userId = user.id;
         send({ t: 'authOk', userId: user.id, nickname: user.nickname });
         return;
@@ -47,7 +58,7 @@ export function attachWebSocket(server: Server): void {
           gameManager.cancelQueue(userId);
           break;
         case 'deploy':
-          gameManager.deploy(userId, msg.cardId, msg.x, msg.y);
+          gameManager.deploy(userId, msg.cardId, num(msg.x), num(msg.y));
           break;
         case 'leaveMatch':
           gameManager.leaveMatch(userId);
@@ -56,7 +67,7 @@ export function attachWebSocket(server: Server): void {
           gameManager.bossJoin(userId, msg.clanId, send);
           break;
         case 'bossDeploy':
-          gameManager.bossDeploy(userId, msg.cardId, msg.x, msg.y);
+          gameManager.bossDeploy(userId, msg.cardId, num(msg.x), num(msg.y));
           break;
         case 'bossLeave':
           gameManager.bossLeave(userId);

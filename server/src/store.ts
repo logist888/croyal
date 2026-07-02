@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, MAX_CLAN_MEMBERS, ALL_CARD_IDS, MAX_CARD_LEVEL,
-  STARTER_BOX_COUNT, STARTER_POOL,
+  STARTER_BOX_COUNT, STARTER_POOL, getCard,
   cardsToUpgrade, goldToUpgrade, xpForUpgrade,
   validateNickname, validateClanName,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
@@ -22,6 +22,7 @@ export interface CreateUserInput {
 export class Store {
   private users = new Map<string, PlayerProfile>();
   private byTelegram = new Map<number, string>();
+  private byNickname = new Map<string, string>(); // nickname -> userId (uniqueness)
   private sessions = new Map<string, string>(); // token -> userId
   private clans = new Map<string, Clan>();
   private db: Db | null = null;
@@ -39,6 +40,7 @@ export class Store {
     for (const u of data.users) {
       this.users.set(u.id, u);
       this.byTelegram.set(u.telegramId, u.id);
+      this.byNickname.set(u.nickname, u.id);
     }
     for (const c of data.clans) this.clans.set(c.id, c);
     for (const [token, userId] of data.sessions) this.sessions.set(token, userId);
@@ -67,6 +69,12 @@ export class Store {
     if (this.byTelegram.has(input.telegramId)) {
       throw new Error('User already registered');
     }
+    // Enforce nickname uniqueness in memory too — the DB UNIQUE constraint
+    // alone would only make the fire-and-forget write-through fail silently,
+    // creating an account that vanishes on restart.
+    if (this.byNickname.has(input.nickname.trim())) {
+      throw new Error('Nickname is already taken');
+    }
     const id = randomUUID();
     const cards: Record<string, CardState> = {};
     for (const cardId of ALL_CARD_IDS) cards[cardId] = { level: 1, count: 0 };
@@ -90,6 +98,7 @@ export class Store {
     };
     this.users.set(id, profile);
     this.byTelegram.set(input.telegramId, id);
+    this.byNickname.set(profile.nickname, id);
     this.db?.upsertUser(profile);
     return profile;
   }
@@ -152,7 +161,11 @@ export class Store {
     }
     if (new Set(trio).size !== trio.length) throw new Error('Trio cards must be unique');
     for (const id of trio) {
-      if (!user.cards[id]) throw new Error(`Card not owned: ${id}`);
+      // hasOwnProperty + catalog check: a plain `user.cards[id]` truthiness
+      // test would accept Object.prototype keys like "constructor".
+      if (typeof id !== 'string' || !getCard(id) || !Object.prototype.hasOwnProperty.call(user.cards, id)) {
+        throw new Error(`Card not owned: ${String(id)}`);
+      }
     }
     user.trio = [...trio];
     this.db?.upsertUser(user);

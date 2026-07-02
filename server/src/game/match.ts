@@ -121,6 +121,7 @@ export class Match {
     if (this.ended) return;
     this.ended = true;
     if (this.timer) clearInterval(this.timer);
+    this.sendSnapshots(); // final frame (king-kill state) before the result
     const winner = this.sim.winnerSide!;
     const reason = this.sim.endReason!;
     this.applyResults(winner, reason);

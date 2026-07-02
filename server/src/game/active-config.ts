@@ -9,14 +9,16 @@ import {
 } from '@croyal/shared';
 
 export function resolveBattleConfig(env: NodeJS.ProcessEnv = process.env): BattleConfig {
+  const warn = (name: string, value: string | undefined) =>
+    console.warn(`[battle-config] unrecognized ${name}="${value}" — falling back to the default (cooldown core)`);
   const economy: EconomyMode =
     env.BATTLE_ECONOMY === 'elixir' ? 'elixir'
     : env.BATTLE_ECONOMY === 'cooldown' ? 'cooldown'
-    : COOLDOWN_BATTLE_CONFIG.economy;
+    : (env.BATTLE_ECONOMY && warn('BATTLE_ECONOMY', env.BATTLE_ECONOMY), COOLDOWN_BATTLE_CONFIG.economy);
   const deployment: DeploymentMode =
     env.BATTLE_DEPLOYMENT === 'free-placement' ? 'free-placement'
     : env.BATTLE_DEPLOYMENT === 'fixed-lane' ? 'fixed-lane'
-    : COOLDOWN_BATTLE_CONFIG.deployment;
+    : (env.BATTLE_DEPLOYMENT && warn('BATTLE_DEPLOYMENT', env.BATTLE_DEPLOYMENT), COOLDOWN_BATTLE_CONFIG.deployment);
   const base = economy === 'elixir' ? LEGACY_BATTLE_CONFIG : COOLDOWN_BATTLE_CONFIG;
   return { ...base, economy, deployment };
 }

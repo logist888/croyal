@@ -114,7 +114,24 @@ export class GameManager {
     }
     let room = this.bossRooms.get(clanId);
     if (!room) {
-      room = new BossRoom(clanId, (r) => this.bossRooms.delete(r.clanId));
+      room = new BossRoom(
+        clanId,
+        (r) => {
+          this.bossRooms.delete(r.clanId);
+          // clear stale raid memberships so future bossDeploys don't no-op
+          for (const [uid, cid] of this.userBoss) {
+            if (cid === r.clanId) this.userBoss.delete(uid);
+          }
+        },
+        undefined,
+        (result) => {
+          // Persist the raid rewards — the bossEnd message alone grants nothing.
+          for (const p of result.participants) {
+            const u = store.getUser(p.userId);
+            if (u) store.updateUser(p.userId, { gold: u.gold + result.rewardGold });
+          }
+        },
+      );
       this.bossRooms.set(clanId, room);
     }
     const res = room.join(userId, profile.nickname, battleDeckOf(profile), send);

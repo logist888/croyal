@@ -61,10 +61,16 @@ export class BossRoom {
   private multiplier = 1;
   private timeLeft = BOSS_RAID_SECONDS;
 
+  /** Cooldowns of raiders who left mid-raid — restored on re-join so a
+   * leave+rejoin cannot wipe the x1.5 recharges. */
+  private benchedCooldowns = new Map<string, Map<string, number>>();
+
   constructor(
     public readonly clanId: string,
     private onEmpty: (room: BossRoom) => void,
     private config: BattleConfig = ACTIVE_BATTLE_CONFIG,
+    /** Called once with the final result so rewards can be persisted. */
+    private onResult?: (result: BossResult) => void,
   ) {}
 
   get size(): number {
@@ -83,8 +89,11 @@ export class BossRoom {
     if (this.ended) return { ok: false, error: 'raid ended' };
     if (this.participants.has(userId)) return { ok: false, error: 'already in raid' };
     if (this.participants.size >= BOSS_MAX_PLAYERS) return { ok: false, error: 'raid full' };
-    const cooldowns = new Map<string, number>();
-    for (const id of deck) cooldowns.set(id, 0);
+    const cooldowns = this.benchedCooldowns.get(userId) ?? new Map<string, number>();
+    this.benchedCooldowns.delete(userId);
+    for (const id of deck) {
+      if (!cooldowns.has(id)) cooldowns.set(id, 0);
+    }
     this.participants.set(userId, {
       userId, nickname, elixir: ELIXIR_START, queue: [...deck], cooldowns, damageDealt: 0, send,
     });
@@ -94,8 +103,14 @@ export class BossRoom {
   }
 
   leave(userId: string): void {
+    const p = this.participants.get(userId);
+    if (p) this.benchedCooldowns.set(userId, p.cooldowns);
     this.participants.delete(userId);
-    if (this.participants.size === 0) this.stop();
+    if (this.participants.size === 0) {
+      this.stop();
+      return;
+    }
+    this.recomputeDifficulty(); // dropping to solo drops the co-op multiplier too
   }
 
   /** Co-op (2+) doubles boss HP and damage; difficulty is recomputed live. */
@@ -303,6 +318,7 @@ export class BossRoom {
       rewardGold: outcome === 'win' ? 200 * this.multiplier : 25,
     };
     for (const p of this.participants.values()) p.send({ t: 'bossEnd', result });
+    this.onResult?.(result); // persist rewards (the message alone grants nothing)
     this.participants.clear();
     this.onEmpty(this);
   }

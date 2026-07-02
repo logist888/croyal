@@ -46,6 +46,17 @@ describe('battle trio', () => {
     expect(() => store.setTrio(u.id, ['footman', 'archers'])).toThrow(/exactly 3/i);
     expect(() => store.setTrio(u.id, ['footman', 'footman', 'archers'])).toThrow(/unique/i);
     expect(() => store.setTrio(u.id, ['footman', 'archers', 'dragon'])).toThrow(/not owned/i);
+    // Object.prototype keys must not pass the ownership check
+    expect(() => store.setTrio(u.id, ['constructor', 'toString', 'valueOf'])).toThrow(/not owned/i);
+  });
+});
+
+describe('nickname uniqueness', () => {
+  it('rejects a duplicate nickname at registration (in memory, not just in the DB)', () => {
+    const store = new Store();
+    store.createUser({ telegramId: 1, nickname: 'SameName', language: 'en' });
+    expect(() => store.createUser({ telegramId: 2, nickname: 'SameName', language: 'en' }))
+      .toThrow(/taken/i);
   });
 });
 

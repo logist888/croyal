@@ -50,6 +50,20 @@ describe('battle simulation (legacy elixir / free placement)', () => {
     expect(sim.getSnapshot('A').nextCard).toBeTruthy();
   });
 
+  it('DECISION: towers actively defend in legacy mode too (build-13 bug fix kept)', () => {
+    // Build-13 towers locked a distant enemy tower forever and never fired at
+    // approaching units — a defect, not a mechanic. The defender re-scan fix
+    // deliberately applies to BOTH modes; exact build-13 behavior remains
+    // available via the fallback commit 3c0354d. This test pins the decision.
+    const sim = legacySim(9);
+    for (let i = 0; i < 20; i++) sim.step(0.05); // empty field: towers idle
+    expect(sim.deploy('A', sim.handOf('A').find((id) => getCard(id)?.type === 'troop')!, 13.5, 16.5).ok).toBe(true);
+    const unit = [...sim.entities.values()].find((e) => e.kind === 'unit')!;
+    const hp0 = unit.hp;
+    for (let i = 0; i < 100; i++) sim.step(0.05); // 5s inside princess range
+    expect(unit.hp).toBeLessThan(hp0); // the tower fires (unlike build-13)
+  });
+
   it('buildings can still siege a tower in reach (build-13 parity)', () => {
     const sim = new Simulation(Array(8).fill('bastion'), [...DEFAULT_DECK], 3, {}, {}, LEGACY_BATTLE_CONFIG);
     // Deploy on own half, then move it to the king's doorstep via direct
