@@ -269,6 +269,15 @@ input[type="text"]::placeholder { color: #9b8763; }
 }
 /* Trio picker */
 .col-card.trio-pick.picked { outline: 3px solid #ffe082; outline-offset: 1px; }
+/* League-locked cards: greyed out; in the trio picker they are not clickable. */
+.col-card.locked { filter: grayscale(0.9); opacity: 0.65; }
+.col-card.trio-pick.locked { cursor: default; }
+.col-card.trio-pick.locked:active { transform: none; }
+.col-lock {
+  position: absolute; top: 2px; right: 2px; font-size: 14px;
+  filter: drop-shadow(0 1px 2px #000); z-index: 2;
+}
+.col-unlock { font-size: 10px; text-align: center; color: #ffd54f; margin-top: 2px; }
 .cost.cost-cd { background: radial-gradient(circle at 35% 30%, #90caf9, #1565c0); font-size: 10px; }
 .col-card { position: relative; }
 .pair-badge {

@@ -48,6 +48,47 @@ export const RECOMMENDED_PAIRS: RecommendedPair[] = [
     en: 'Rush + burst: the Blademaster dives, Meteor lands the heavy hit.',
     ru: 'Заход + взрыв: Мечник врывается, Метеор наносит тяжёлый удар.',
   },
+  // Expansion catalog pairs (build-15) — one flagship combo per new theme.
+  {
+    cards: ['treant', 'druidess'],
+    en: 'Living wall: the Treant tanks while the Druidess keeps it healed.',
+    ru: 'Живая стена: Древень танкует, а Друидка его подлечивает.',
+  },
+  {
+    cards: ['infernal_hound', 'firestorm'],
+    en: 'Burn them down: the Hound charges in, Firestorm roasts the defenders.',
+    ru: 'Выжигание: Адский пёс врывается, Огненный шторм дожигает защитников.',
+  },
+  {
+    cards: ['snow_yeti', 'blizzard'],
+    en: 'Cold advance: the Yeti pushes while Blizzard slows every defender.',
+    ru: 'Холодный натиск: Йети продавливает, Метель замедляет всех защитников.',
+  },
+  {
+    cards: ['stormcrow', 'chain_bolt'],
+    en: 'Sky assault: Storm Crows strike from above, Chain Bolt zaps the swarm answer.',
+    ru: 'Небесный штурм: Вороны бьют с воздуха, Цепная молния снимает рой в ответ.',
+  },
+  {
+    cards: ['royal_guard', 'trumpeter'],
+    en: 'Royal march: the Guard holds formation, the Trumpeter keeps them enraged.',
+    ru: 'Королевский марш: Стража держит строй, Трубач разгоняет её яростью.',
+  },
+  {
+    cards: ['necromancer', 'venom_cloud'],
+    en: 'Creeping death: skeletons swarm while Venom Cloud melts the defense.',
+    ru: 'Ползучая смерть: скелеты наседают, Ядовитое облако растворяет оборону.',
+  },
+  {
+    cards: ['sand_golem', 'scarab_swarm'],
+    en: 'Desert wave: the Golem walks to towers, Scarabs eat whoever intercepts.',
+    ru: 'Волна пустыни: Голем идёт к башням, скарабеи съедают перехватчиков.',
+  },
+  {
+    cards: ['titan_golem', 'worldtree_sap'],
+    en: 'Unbreakable: the Titan soaks damage, Worldtree Sap heals it back up.',
+    ru: 'Несокрушимость: Титан впитывает урон, Сок Мирового древа его отхиливает.',
+  },
 ];
 
 /** Card ids that pair well with the given card. */

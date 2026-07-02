@@ -6,7 +6,7 @@ import {
   getCard, NICKNAME_REGEX, NICKNAME_MIN, NICKNAME_MAX,
   leagueForTrophies, levelFromXp, averageElixir, averageCooldown, RARITY_COLOR, LEAGUES,
   MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats, TRIO_SIZE, ALL_CARD_IDS,
-  pairFor,
+  pairFor, isCardUnlocked, unlockLeagueIndex,
 } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
@@ -49,6 +49,12 @@ export function escapeHtml(s: string): string {
 }
 export function hex(color: number): string {
   return '#' + color.toString(16).padStart(6, '0');
+}
+
+/** Localized league name where the given card unlocks. */
+function unlockLeagueName(cardId: string): string {
+  const league = LEAGUES[unlockLeagueIndex(cardId)];
+  return getLang() === 'ru' ? league.ru : league.en;
 }
 
 /**
@@ -247,7 +253,11 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
   try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
   const p = state.profile!;
   const ids = opts.pool ?? ALL_CARD_IDS;
-  const selected = new Set<string>(p.trio.filter((id) => ids.includes(id)));
+  // A trophy drop can leave a now-locked card in the active trio (the server
+  // only gates on SET) — don't pre-select it here, or it couldn't be deselected.
+  const selected = new Set<string>(
+    p.trio.filter((id) => ids.includes(id) && isCardUnlocked(id, p.trophies)),
+  );
 
   const node = div('screen');
   node.innerHTML = `
@@ -300,6 +310,7 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
     const c = getCard(id);
     const cs = p.cards[id];
     if (!c || !cs) continue;
+    const locked = !isCardUnlocked(id, p.trophies);
     const cell = div('col-card trio-pick');
     cell.style.borderColor = hex(RARITY_COLOR[c.rarity]);
     const art = cardImageUrl(id);
@@ -307,21 +318,28 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
       ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center top`
       : `background:${hex(c.color)}`;
     cell.innerHTML = `
-      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cooldownSec}s</span></div>
-      <div class="col-lvl">${t('col.level', { n: cs.level })}</div>
+      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cooldownSec}s</span>${locked ? '<span class="col-lock">🔒</span>' : ''}</div>
+      ${locked
+        ? `<div class="col-unlock">${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>`
+        : `<div class="col-lvl">${t('col.level', { n: cs.level })}</div>`}
       <span class="pair-badge" style="display:none">${t('pairs.badge')}</span>`;
-    cell.classList.toggle('picked', selected.has(id));
-    cell.onclick = () => {
-      if (selected.has(id)) {
-        selected.delete(id);
-      } else {
-        if (selected.size >= TRIO_SIZE) return;
-        selected.add(id);
-      }
+    if (locked) {
+      // Visible but not selectable — the server enforces the same gate on save.
+      cell.classList.add('locked');
+    } else {
       cell.classList.toggle('picked', selected.has(id));
-      haptic('light');
-      refreshSave();
-    };
+      cell.onclick = () => {
+        if (selected.has(id)) {
+          selected.delete(id);
+        } else {
+          if (selected.size >= TRIO_SIZE) return;
+          selected.add(id);
+        }
+        cell.classList.toggle('picked', selected.has(id));
+        haptic('light');
+        refreshSave();
+      };
+    }
     cells.set(id, cell);
     grid.appendChild(cell);
   }
@@ -369,19 +387,22 @@ export async function renderCollection(nav: Nav): Promise<void> {
     const c = getCard(id);
     const cs = p.cards[id];
     if (!c || !cs) continue;
+    const locked = !isCardUnlocked(id, p.trophies);
     const need = cardsToUpgrade(cs.level);
     const ready = cs.level < MAX_CARD_LEVEL && cs.count >= need && p.gold >= goldToUpgrade(cs.level);
     const cell = div('col-card');
+    if (locked) cell.classList.add('locked'); // greyed, but detail/upgrade still open — only the trio is gated
     cell.style.borderColor = hex(RARITY_COLOR[c.rarity]);
     const art = cardImageUrl(id);
     const bg = art
       ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center top`
       : `background:${hex(c.color)}`;
     cell.innerHTML = `
-      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cost}</span></div>
+      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cost}</span>${locked ? '<span class="col-lock">🔒</span>' : ''}</div>
       <div class="col-lvl">${t('col.level', { n: cs.level })}${ready ? ' <span class="up-dot">⬆</span>' : ''}</div>
       <div class="col-bar"><div class="col-fill" style="width:${Math.min(100, (cs.count / (need === Infinity ? cs.count || 1 : need)) * 100)}%"></div></div>
-      <div class="muted col-count">${cs.level >= MAX_CARD_LEVEL ? t('col.maxLevel') : t('col.cards', { have: cs.count, need })}</div>`;
+      <div class="muted col-count">${cs.level >= MAX_CARD_LEVEL ? t('col.maxLevel') : t('col.cards', { have: cs.count, need })}</div>
+      ${locked ? `<div class="col-unlock">${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>` : ''}`;
     cell.onclick = () => openCardDetail(nav, id);
     grid.appendChild(cell);
   }
@@ -409,9 +430,10 @@ function openCardDetail(nav: Nav, id: string): void {
       <div class="row" style="gap:8px">
         <span class="badge" style="background:${hex(RARITY_COLOR[c.rarity])}">${rarityText(c.rarity)}</span>
         <span class="badge" style="background:#455a64;color:#fff">${roleText(c.role)}</span>
-        <span class="badge">💧 ${c.cost}</span>
+        <span class="badge">${state.mode.economy === 'cooldown' ? `⏳ ${c.cooldownSec}s` : `💧 ${c.cost}`}</span>
         <span class="badge">${t('col.level', { n: cs.level })}</span>
       </div>
+      ${isCardUnlocked(id, p.trophies) ? '' : `<div class="col-unlock">🔒 ${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>`}
       <div class="col" style="gap:4px">
         ${c.type === 'spell'
           ? statLine(t('card.spellDmg'), stats.spellDamage)

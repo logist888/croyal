@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, MAX_CLAN_MEMBERS, ALL_CARD_IDS, MAX_CARD_LEVEL,
-  STARTER_BOX_COUNT, STARTER_POOL, getCard,
+  STARTER_BOX_COUNT, STARTER_POOL, getCard, isCardUnlocked,
   cardsToUpgrade, goldToUpgrade, xpForUpgrade,
   validateNickname, validateClanName,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
@@ -165,6 +165,10 @@ export class Store {
       // test would accept Object.prototype keys like "constructor".
       if (typeof id !== 'string' || !getCard(id) || !Object.prototype.hasOwnProperty.call(user.cards, id)) {
         throw new Error(`Card not owned: ${String(id)}`);
+      }
+      // League gate on SET only — a trophy drop never breaks an existing trio.
+      if (!isCardUnlocked(id, user.trophies)) {
+        throw new Error(`Card locked: ${id}`);
       }
     }
     user.trio = [...trio];

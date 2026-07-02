@@ -3,7 +3,7 @@
  * snapshots, runs the bot opponent (when there is no human), and reports results.
  */
 import {
-  TICK_DT, SNAPSHOT_RATE, TICK_RATE,
+  TICK_DT, SNAPSHOT_RATE, TICK_RATE, unlockedCards,
   otherSide, type Side, type ServerMessage, type MatchResult, type BattleRewards, type BattleConfig,
 } from '@croyal/shared';
 import { Simulation } from './simulation';
@@ -156,14 +156,16 @@ export class Match {
   private persist(userId: string, isWinner: boolean, delta: number): BattleRewards {
     const user = this.store.getUser(userId);
     if (!user) return { gold: 0, cards: {} };
-    // Battle-chest contents: gold + duplicate cards spread across the deck (winner
-    // more). Deterministic rotation by games played.
+    // Battle-chest contents: gold + duplicate cards from the player's UNLOCKED
+    // pool (league progression makes new leagues feed new cards). Winner gets
+    // more; deterministic rotation by games played.
     const goldGain = isWinner ? 50 : 10;
     const n = isWinner ? 3 : 1;
-    const start = (user.wins + user.losses) % Math.max(1, user.deck.length);
+    const pool = unlockedCards(user.trophies);
+    const start = (user.wins + user.losses) % Math.max(1, pool.length);
     const drops: Record<string, number> = {};
     for (let i = 0; i < n; i++) {
-      const id = user.deck[(start + i) % user.deck.length];
+      const id = pool[(start + i) % pool.length];
       drops[id] = (drops[id] ?? 0) + 1;
     }
     this.store.updateUser(userId, {
