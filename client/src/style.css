@@ -270,6 +270,44 @@ input[type="text"]::placeholder { color: #9b8763; }
 /* Trio picker */
 .col-card.trio-pick.picked { outline: 3px solid #ffe082; outline-offset: 1px; }
 .cost.cost-cd { background: radial-gradient(circle at 35% 30%, #90caf9, #1565c0); font-size: 10px; }
+.col-card { position: relative; }
+.pair-badge {
+  position: absolute; top: -8px; right: -6px; background: #4a148c; color: #ffe082;
+  border: 1px solid #ffe082; border-radius: 8px; padding: 1px 6px;
+  font-size: 10px; font-weight: 800; z-index: 2;
+}
+.pair-hint { font-size: 12px; line-height: 1.5; min-height: 18px; }
+
+/* Starter boxes (onboarding) */
+.starter-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  width: 100%; max-width: 360px; margin: 8px auto;
+}
+.starter-cell { aspect-ratio: 3 / 4; }
+.starter-box {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 42px; border: 2px dashed rgba(255,255,255,0.35); border-radius: 12px;
+  background: rgba(255,255,255,0.06); cursor: pointer; user-select: none;
+}
+.starter-cell.locked .starter-box { opacity: 0.35; cursor: default; }
+.starter-cell.next .starter-box {
+  border-color: #ffe082; animation: box-glow 1.2s ease-in-out infinite alternate;
+}
+@keyframes box-glow {
+  from { box-shadow: 0 0 4px rgba(255,224,130,0.3); transform: scale(1); }
+  to { box-shadow: 0 0 16px rgba(255,224,130,0.8); transform: scale(1.04); }
+}
+.starter-card {
+  width: 100%; height: 100%; border-radius: 12px; border: 2px solid #fff;
+  display: flex; align-items: flex-end; justify-content: center;
+  font-weight: 800; font-size: 13px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  padding-bottom: 6px;
+}
+.starter-card.revealed { animation: card-reveal 0.4s ease-out; }
+@keyframes card-reveal {
+  from { transform: scale(0.4) rotate(-8deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 1; }
+}
 
 .handcard {
   position: relative; aspect-ratio: 3 / 4; border-radius: 12px; padding: 10px 4px 16px;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Store } from '../store';
-import { MAX_CLAN_MEMBERS } from '@croyal/shared';
+import { MAX_CLAN_MEMBERS, STARTER_BOX_COUNT, STARTER_POOL } from '@croyal/shared';
 
 function makeUser(store: Store, n: number) {
   return store.createUser({ telegramId: 1000 + n, nickname: `Player${n}`, language: 'en' });
@@ -46,6 +46,24 @@ describe('battle trio', () => {
     expect(() => store.setTrio(u.id, ['footman', 'archers'])).toThrow(/exactly 3/i);
     expect(() => store.setTrio(u.id, ['footman', 'footman', 'archers'])).toThrow(/unique/i);
     expect(() => store.setTrio(u.id, ['footman', 'archers', 'dragon'])).toThrow(/not owned/i);
+  });
+});
+
+describe('starter boxes (onboarding)', () => {
+  it('reveals the starter pool in order and stops after the last box', () => {
+    const store = new Store();
+    const u = makeUser(store, 1);
+    const revealed: string[] = [];
+    for (let i = 0; i < STARTER_BOX_COUNT; i++) {
+      const r = store.openStarterBox(u.id);
+      revealed.push(r.cardId);
+      expect(r.opened).toBe(i + 1);
+      expect(r.total).toBe(STARTER_BOX_COUNT);
+    }
+    expect(revealed).toEqual(STARTER_POOL.slice(0, STARTER_BOX_COUNT));
+    expect(() => store.openStarterBox(u.id)).toThrow(/already opened/i);
+    // presentational: no duplicates granted
+    for (const id of revealed) expect(store.getUser(u.id)!.cards[id].count).toBe(0);
   });
 });
 

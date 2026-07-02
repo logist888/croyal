@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, MAX_CLAN_MEMBERS, ALL_CARD_IDS, MAX_CARD_LEVEL,
+  STARTER_BOX_COUNT, STARTER_POOL,
   cardsToUpgrade, goldToUpgrade, xpForUpgrade,
   validateNickname, validateClanName,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
@@ -125,6 +126,21 @@ export class Store {
     user.xp += xpForUpgrade(cs.level);
     this.db?.upsertUser(user);
     return user;
+  }
+
+  /**
+   * Open the next starter box (onboarding). Deterministic: box N always
+   * reveals STARTER_POOL[N]. Purely presentational — grants no duplicates,
+   * so the upgrade economy is untouched (GDD decision).
+   */
+  openStarterBox(userId: string): { cardId: string; opened: number; total: number } {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    if (user.starterBoxesOpened >= STARTER_BOX_COUNT) throw new Error('All starter boxes already opened');
+    const cardId = STARTER_POOL[Math.min(user.starterBoxesOpened, STARTER_POOL.length - 1)];
+    user.starterBoxesOpened += 1;
+    this.db?.upsertUser(user);
+    return { cardId, opened: user.starterBoxesOpened, total: STARTER_BOX_COUNT };
   }
 
   /** Set the active battle trio: exactly TRIO_SIZE distinct, owned cards. */

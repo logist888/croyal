@@ -106,6 +106,17 @@ export function createApp() {
     }
   });
 
+  // --- Onboarding: open the next starter box (reveals a starter character) ---
+  app.post('/api/starter/open', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const reveal = store.openStarterBox(req.userId!);
+      const profile = store.getUser(req.userId!)!;
+      res.json({ ...reveal, profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
   // --- Cards: upgrade ---
   app.post('/api/cards/:id/upgrade', requireAuth, (req: AuthedRequest, res: Response) => {
     try {

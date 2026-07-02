@@ -34,6 +34,9 @@ export const api = {
   upgradeCard: (id: string) => req<{ profile: PlayerProfile }>(`/api/cards/${id}/upgrade`, { method: 'POST' }),
   updateTrio: (trio: string[]) =>
     req<{ profile: PlayerProfile }>('/api/trio', { method: 'POST', body: JSON.stringify({ trio }) }),
+  openStarterBox: () =>
+    req<{ cardId: string; opened: number; total: number; profile: PlayerProfile }>(
+      '/api/starter/open', { method: 'POST' }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

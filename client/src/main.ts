@@ -5,13 +5,16 @@ import { api } from './net';
 import { state } from './state';
 import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
 import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, setUI, logoHtml, type Nav } from './ui';
+import { renderOnboarding, needsOnboarding } from './onboarding';
 import { startBattle } from './battle';
 import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
 import { loadAssetManifest, menuBgUrl } from './assets';
 
 const nav: Nav = {
-  toMenu: () => renderMenu(nav),
+  // Every "go home" routes through the onboarding gate until the starter
+  // boxes are opened and the first trio saved.
+  toMenu: () => (needsOnboarding() ? renderOnboarding(nav) : renderMenu(nav)),
   toRegister: (opts) => renderRegister(nav, opts),
   toClans: () => { void renderClans(nav); },
   toBattle: () => { void startBattle(nav); },

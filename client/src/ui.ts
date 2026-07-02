@@ -6,6 +6,7 @@ import {
   getCard, NICKNAME_REGEX, NICKNAME_MIN, NICKNAME_MAX,
   leagueForTrophies, levelFromXp, averageElixir, averageCooldown, RARITY_COLOR, LEAGUES,
   MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats, TRIO_SIZE, ALL_CARD_IDS,
+  pairFor,
 } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
@@ -231,11 +232,21 @@ export function renderMenu(nav: Nav): void {
 }
 
 // --- Battle trio picker: choose exactly TRIO_SIZE cards from the collection ---
-export async function renderTrioPicker(nav: Nav): Promise<void> {
+export interface TrioPickerOpts {
+  /** Restrict the choice to these card ids (onboarding: the starter pool). */
+  pool?: string[];
+  /** Called after a successful save (default: back to the menu). */
+  onSaved?: () => void;
+  /** Back-button action (default: back to the menu). */
+  onBack?: () => void;
+}
+
+export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Promise<void> {
   setGameVisible(false);
   try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
   const p = state.profile!;
-  const selected = new Set<string>(p.trio);
+  const ids = opts.pool ?? ALL_CARD_IDS;
+  const selected = new Set<string>(p.trio.filter((id) => ids.includes(id)));
 
   const node = div('screen');
   node.innerHTML = `
@@ -245,22 +256,46 @@ export async function renderTrioPicker(nav: Nav): Promise<void> {
     </div>
     <div class="muted">${t('trio.hint')}</div>
     <div class="collection" id="grid"></div>
+    <div class="pair-hint muted" id="pair-hint"></div>
     <div class="error" id="err"></div>
     <button id="save" class="accent">${t('trio.save')} (${selected.size}/${TRIO_SIZE})</button>
   `;
   setUI(node);
-  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => (opts.onBack ? opts.onBack() : nav.toMenu());
 
   const grid = node.querySelector<HTMLDivElement>('#grid')!;
   const save = node.querySelector<HTMLButtonElement>('#save')!;
   const err = node.querySelector<HTMLDivElement>('#err')!;
+  const pairHint = node.querySelector<HTMLDivElement>('#pair-hint')!;
+  const cells = new Map<string, HTMLDivElement>();
+  const lang = getLang();
+
+  // "Good pair" badges: mark unpicked cards that combo with a picked one, and
+  // list the descriptions of pairs already assembled in the selection.
+  const refreshPairs = () => {
+    for (const [id, cell] of cells) {
+      const badge = cell.querySelector<HTMLSpanElement>('.pair-badge')!;
+      const partnered = !selected.has(id) && [...selected].some((s) => pairFor(s, id));
+      badge.style.display = partnered ? '' : 'none';
+    }
+    const matched: string[] = [];
+    const sel = [...selected];
+    for (let i = 0; i < sel.length; i++) {
+      for (let j = i + 1; j < sel.length; j++) {
+        const pr = pairFor(sel[i], sel[j]);
+        if (pr) matched.push(lang === 'ru' ? pr.ru : pr.en);
+      }
+    }
+    pairHint.innerHTML = matched.map((m) => `✨ ${escapeHtml(m)}`).join('<br/>');
+  };
 
   const refreshSave = () => {
     save.textContent = `${t('trio.save')} (${selected.size}/${TRIO_SIZE})`;
     save.disabled = selected.size !== TRIO_SIZE;
+    refreshPairs();
   };
 
-  for (const id of ALL_CARD_IDS) {
+  for (const id of ids) {
     const c = getCard(id);
     const cs = p.cards[id];
     if (!c || !cs) continue;
@@ -272,7 +307,8 @@ export async function renderTrioPicker(nav: Nav): Promise<void> {
       : `background:${hex(c.color)}`;
     cell.innerHTML = `
       <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cooldownSec}s</span></div>
-      <div class="col-lvl">${t('col.level', { n: cs.level })}</div>`;
+      <div class="col-lvl">${t('col.level', { n: cs.level })}</div>
+      <span class="pair-badge" style="display:none">${t('pairs.badge')}</span>`;
     cell.classList.toggle('picked', selected.has(id));
     cell.onclick = () => {
       if (selected.has(id)) {
@@ -285,6 +321,7 @@ export async function renderTrioPicker(nav: Nav): Promise<void> {
       haptic('light');
       refreshSave();
     };
+    cells.set(id, cell);
     grid.appendChild(cell);
   }
   refreshSave();
@@ -295,7 +332,8 @@ export async function renderTrioPicker(nav: Nav): Promise<void> {
     try {
       state.profile = (await api.updateTrio([...selected])).profile;
       haptic('success');
-      nav.toMenu();
+      if (opts.onSaved) opts.onSaved();
+      else nav.toMenu();
     } catch (e) {
       err.textContent = (e as Error).message;
       save.disabled = false;
