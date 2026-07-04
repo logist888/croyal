@@ -8,11 +8,12 @@ services:
     buildCommand: npm install && npm run build --workspace client
     startCommand: npm run start --workspace server
     envVars:
-      # Dev auth lets you test inside Telegram without a bot token.
-      # LAUNCH: set this to "0" (or delete it) AND fill BOT_TOKEN below —
-      # then players are authenticated by their real Telegram account.
+      # LAUNCH: verified Telegram auth only (dev auth OFF). Requires BOT_TOKEN
+      # below to be set; if BOT_TOKEN is empty the server safely falls back to
+      # dev auth (no login lockout). For local browser testing, override this
+      # to "1" in your own env — never in production.
       - key: ALLOW_DEV_AUTH
-        value: "1"
+        value: "0"
       # @BotFather token → verified Telegram auth. Paste the value in the
       # Render dashboard (Environment); the key is pre-declared here.
       - key: BOT_TOKEN
