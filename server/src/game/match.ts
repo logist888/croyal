@@ -100,6 +100,28 @@ export class Match {
     return null;
   }
 
+  /** True while this user still holds a seat in a live (not-yet-ended) match. */
+  hasUser(userId: string): boolean {
+    return !this.ended && this.sideOf(userId) !== null;
+  }
+
+  /**
+   * Re-bind a reconnecting player's socket to their seat and push the current
+   * frame so the client resumes mid-match. The match never paused — the
+   * simulation kept running — so we just re-announce and re-sync.
+   */
+  reattach(userId: string, send: Sender): boolean {
+    const side = this.sideOf(userId);
+    if (!side || this.ended) return false;
+    const seat = side === 'A' ? this.seatA : this.seatB;
+    seat.send = send;
+    const opponent = side === 'A' ? this.seatB : this.seatA;
+    const oppName = opponent.userId ? this.store.getUser(opponent.userId)?.nickname ?? 'Player' : 'Bot';
+    send({ t: 'matchFound', matchId: this.id, opponent: oppName });
+    send({ t: 'battle', snapshot: this.sim.getSnapshot(side) });
+    return true;
+  }
+
   // --- Bot opponent ---
   private runBot(side: Side): void {
     this.botCooldown -= TICK_DT;

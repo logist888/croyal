@@ -48,41 +48,84 @@ export const api = {
 
 type Handler = (msg: ServerMessage) => void;
 
+/** Notified when the live connection drops and when it comes back (reconnect UX). */
+export type ConnListener = (state: 'online' | 'reconnecting') => void;
+
 export class GameSocket {
   private ws: WebSocket | null = null;
   private handlers = new Set<Handler>();
+  private connListeners = new Set<ConnListener>();
   private authed = false;
   private queueOnOpen: ClientMessage[] = [];
+  private intentionalClose = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect(): Promise<void> {
     if (this.ws && this.authed) return Promise.resolve();
+    this.intentionalClose = false;
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(WS_BASE);
-      this.ws = ws;
-      ws.onopen = () => {
-        if (state.token) ws.send(encode({ t: 'auth', token: state.token }));
-      };
-      ws.onmessage = (ev) => {
-        const msg = decodeServer(String(ev.data));
-        if (!msg) return;
-        if (msg.t === 'authOk') {
-          this.authed = true;
-          for (const q of this.queueOnOpen) ws.send(encode(q));
-          this.queueOnOpen = [];
-          resolve();
-        } else if (msg.t === 'authError') {
-          reject(new Error(msg.error));
-        }
-        for (const h of this.handlers) h(msg);
-      };
-      ws.onerror = () => reject(new Error('socket error'));
-      ws.onclose = () => { this.authed = false; };
+      this.open(resolve, reject);
     });
+  }
+
+  private open(resolve?: () => void, reject?: (e: Error) => void): void {
+    const ws = new WebSocket(WS_BASE);
+    this.ws = ws;
+    ws.onopen = () => {
+      if (state.token) ws.send(encode({ t: 'auth', token: state.token }));
+    };
+    ws.onmessage = (ev) => {
+      const msg = decodeServer(String(ev.data));
+      if (!msg) return;
+      if (msg.t === 'authOk') {
+        const wasDown = this.reconnectAttempts > 0;
+        this.authed = true;
+        this.reconnectAttempts = 0;
+        for (const q of this.queueOnOpen) ws.send(encode(q));
+        this.queueOnOpen = [];
+        if (wasDown) this.emitConn('online'); // server.attach() will resync any live match
+        resolve?.();
+      } else if (msg.t === 'authError') {
+        reject?.(new Error(msg.error));
+      }
+      for (const h of this.handlers) h(msg);
+    };
+    ws.onerror = () => { if (this.reconnectAttempts === 0) reject?.(new Error('socket error')); };
+    ws.onclose = () => {
+      this.authed = false;
+      if (this.intentionalClose) return;
+      // Unexpected drop — keep the app's lifeline alive with capped backoff.
+      // The server holds an in-progress match open for a grace window, so a
+      // quick reconnect (auth → server.attach) resumes the battle in place.
+      this.emitConn('reconnecting');
+      const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 8000);
+      this.reconnectAttempts += 1;
+      this.reconnectTimer = setTimeout(() => this.open(), delay);
+    };
+  }
+
+  /** Close for good (e.g. leaving the app) — stops the reconnect loop. */
+  close(): void {
+    this.intentionalClose = true;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    this.ws?.close();
+    this.ws = null;
+    this.authed = false;
   }
 
   on(h: Handler): () => void {
     this.handlers.add(h);
     return () => this.handlers.delete(h);
+  }
+
+  onConn(l: ConnListener): () => void {
+    this.connListeners.add(l);
+    return () => this.connListeners.delete(l);
+  }
+
+  private emitConn(s: 'online' | 'reconnecting'): void {
+    for (const l of this.connListeners) l(s);
   }
 
   send(msg: ClientMessage): void {

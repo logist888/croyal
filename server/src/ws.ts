@@ -42,6 +42,9 @@ export function attachWebSocket(server: Server): void {
         }
         userId = user.id;
         send({ t: 'authOk', userId: user.id, nickname: user.nickname });
+        // Reconnect: if this player has a match still running (socket dropped
+        // within the grace window), re-bind it and resync so the battle resumes.
+        gameManager.attach(user.id, send);
         return;
       }
 

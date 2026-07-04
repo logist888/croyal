@@ -32,6 +32,7 @@ export async function startBattle(nav: Nav): Promise<void> {
   let enemyDown = { left: false, right: false };
   let opponentName = '';
   let off: (() => void) | null = null;
+  let offConn: (() => void) | null = null;
   let inMatch = false;
   let fastBannerShown = false;
   let seenIds: Set<string> | null = null;
@@ -66,9 +67,26 @@ export async function startBattle(nav: Nav): Promise<void> {
 
   function cleanup() {
     off?.();
+    offConn?.();
+    document.getElementById('reconnect-overlay')?.remove();
     field?.destroy();
     field = null;
     setGameVisible(false);
+  }
+
+  // Show a "reconnecting…" veil while the socket is down mid-battle; the
+  // server holds the match open and resyncs it once the socket is back.
+  function setConnState(s: 'online' | 'reconnecting') {
+    const existing = document.getElementById('reconnect-overlay');
+    if (s === 'reconnecting') {
+      if (existing || !inMatch) return;
+      const veil = document.createElement('div');
+      veil.id = 'reconnect-overlay';
+      veil.innerHTML = `<div class="reconnect-box"><div class="spinner"></div>${t('battle.reconnecting')}</div>`;
+      document.body.appendChild(veil);
+    } else {
+      existing?.remove();
+    }
   }
 
   function setAiming(cardId: string | null) {
@@ -284,6 +302,7 @@ export async function startBattle(nav: Nav): Promise<void> {
   }
 
   let root: HTMLElement | null = null;
+  offConn = socket.onConn(setConnState);
   off = socket.on((msg: ServerMessage) => {
     if (msg.t === 'matchFound' && !inMatch) {
       inMatch = true;

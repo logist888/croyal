@@ -11,6 +11,8 @@ import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { store } from './store';
 
 const BOT_FALLBACK_MS = 6000;
+/** How long a match survives a socket drop before the absent player forfeits. */
+const RECONNECT_GRACE_MS = 30000;
 
 interface Waiting {
   userId: string;
@@ -24,6 +26,7 @@ export class GameManager {
   private bossRooms = new Map<string, BossRoom>(); // clanId -> room
   private userBoss = new Map<string, string>(); // userId -> clanId
   private waiting: Waiting | null = null;
+  private graceTimers = new Map<string, ReturnType<typeof setTimeout>>(); // userId -> forfeit timer
 
   // --- 1v1 matchmaking ---
   queue(userId: string, send: Sender): void {
@@ -85,8 +88,27 @@ export class GameManager {
 
   private onMatchEnd(match: Match, seatA: MatchSeat, seatB: MatchSeat): void {
     this.matches.delete(match.id);
-    if (seatA.userId) this.userMatch.delete(seatA.userId);
-    if (seatB.userId) this.userMatch.delete(seatB.userId);
+    if (seatA.userId) { this.userMatch.delete(seatA.userId); this.clearGrace(seatA.userId); }
+    if (seatB.userId) { this.userMatch.delete(seatB.userId); this.clearGrace(seatB.userId); }
+  }
+
+  private clearGrace(userId: string): void {
+    const t = this.graceTimers.get(userId);
+    if (t) { clearTimeout(t); this.graceTimers.delete(userId); }
+  }
+
+  /**
+   * Re-bind a reconnecting player to their in-progress match (called on
+   * re-auth). Cancels any pending forfeit and resyncs the client. Returns
+   * true if the player was resumed into a live match.
+   */
+  attach(userId: string, send: Sender): boolean {
+    const matchId = this.userMatch.get(userId);
+    if (!matchId) return false;
+    const match = this.matches.get(matchId);
+    if (!match || !match.hasUser(userId)) return false;
+    this.clearGrace(userId);
+    return match.reattach(userId, send);
   }
 
   deploy(userId: string, cardId: string, x?: number, y?: number): void {
@@ -96,6 +118,7 @@ export class GameManager {
   }
 
   leaveMatch(userId: string): void {
+    this.clearGrace(userId); // an explicit leave supersedes any reconnect window
     const matchId = this.userMatch.get(userId);
     if (!matchId) return;
     this.matches.get(matchId)?.handleLeave(userId);
@@ -156,10 +179,24 @@ export class GameManager {
   }
 
   // --- Connection teardown ---
+  /**
+   * A socket dropped. Leaving matchmaking or a boss raid is immediate, but an
+   * active 1v1 match is held open for RECONNECT_GRACE_MS so a flaky mobile
+   * connection can rejoin (see attach) instead of auto-losing. If the window
+   * elapses with no reconnect, the absent player forfeits.
+   */
   disconnect(userId: string): void {
     this.cancelQueue(userId);
-    this.leaveMatch(userId);
     this.bossLeave(userId);
+    const matchId = this.userMatch.get(userId);
+    if (matchId && this.matches.get(matchId)?.hasUser(userId)) {
+      this.clearGrace(userId);
+      const timer = setTimeout(() => {
+        this.graceTimers.delete(userId);
+        this.leaveMatch(userId); // grace elapsed -> forfeit
+      }, RECONNECT_GRACE_MS);
+      this.graceTimers.set(userId, timer);
+    }
   }
 }
 

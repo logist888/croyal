@@ -410,3 +410,22 @@ input[type="text"]::placeholder { color: #9b8763; }
   display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100;
 }
 .modal { width: 100%; max-width: 360px; }
+
+/* ===== Reconnect veil (mid-battle socket drop) ===== */
+#reconnect-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+}
+.reconnect-box {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(20,16,4,0.9); color: #ffe082;
+  border: 2px solid #ffe082; border-radius: 12px;
+  padding: 14px 20px; font-weight: 800; font-size: 15px;
+}
+.reconnect-box .spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 3px solid rgba(255,224,130,0.3); border-top-color: #ffe082;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
