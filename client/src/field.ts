@@ -44,9 +44,11 @@ function textureKeyFor(e: EntitySnapshot): string | null {
   return null;
 }
 function boxTiles(e: EntitySnapshot): number {
-  if (e.id === 'boss') return 3.4;
-  if (e.kind === 'tower') return e.towerType === 'king' ? 2.4 : 2.0;
-  return 2.0; // textured unit sprites (slightly larger so the art reads on the field)
+  if (e.id === 'boss') return 3.8;
+  // Towers are the focal structures — clearly larger than troops so the
+  // king > princess > unit hierarchy reads at a glance.
+  if (e.kind === 'tower') return e.towerType === 'king' ? 3.4 : 2.8;
+  return 1.7; // troop sprites: big enough to read, small enough not to overhang the river
 }
 
 class FieldScene extends Phaser.Scene {
