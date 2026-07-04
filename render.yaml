@@ -8,13 +8,20 @@ services:
     buildCommand: npm install && npm run build --workspace client
     startCommand: npm run start --workspace server
     envVars:
-      # Lets you test inside Telegram without putting a bot token here.
-      # For a real launch, remove this and set BOT_TOKEN instead.
+      # Dev auth lets you test inside Telegram without a bot token.
+      # LAUNCH: set this to "0" (or delete it) AND fill BOT_TOKEN below —
+      # then players are authenticated by their real Telegram account.
       - key: ALLOW_DEV_AUTH
         value: "1"
+      # @BotFather token → verified Telegram auth. Paste the value in the
+      # Render dashboard (Environment); the key is pre-declared here.
+      - key: BOT_TOKEN
+        sync: false
       # Durable storage so progress survives restarts/sleep. Paste your Neon/Supabase
       # connection string in the Render dashboard (Environment).
       - key: DATABASE_URL
         sync: false
-      # - key: BOT_TOKEN
-      #   sync: false   # set your @BotFather token in the dashboard for verified auth
+      # Optional: keep the free instance warm — set to this app's public
+      # health URL, e.g. https://<app>.onrender.com/api/health
+      - key: KEEPALIVE_URL
+        sync: false
