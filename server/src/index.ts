@@ -20,7 +20,24 @@ async function main() {
     if (isDevAuthAllowed) {
       console.log('[tower-clash] DEV AUTH ENABLED (no BOT_TOKEN) — accepting dev users for browser testing.');
     }
+    startKeepAlive();
   });
+}
+
+/**
+ * Optional keep-warm ping for free hosting tiers (e.g. Render free) that sleep
+ * after ~15 min of no inbound traffic — a cold wake costs the player a 30–60s
+ * stall. Opt in with KEEPALIVE_URL=<public health url> (KEEPALIVE_MINUTES tunes
+ * the interval, default 10). Best-effort; failures are ignored. For a
+ * pay-as-you-go alternative, point an external uptime pinger at /api/health.
+ */
+function startKeepAlive(): void {
+  const url = process.env.KEEPALIVE_URL;
+  if (!url) return;
+  const minutes = Number(process.env.KEEPALIVE_MINUTES ?? 10);
+  const everyMs = Math.max(1, minutes) * 60_000;
+  setInterval(() => { void fetch(url).catch(() => {}); }, everyMs).unref();
+  console.log(`[tower-clash] keep-alive: pinging ${url} every ${minutes}min`);
 }
 
 main().catch((err) => {

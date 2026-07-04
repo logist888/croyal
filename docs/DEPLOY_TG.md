@@ -46,17 +46,41 @@ public Mini App URL. (No-install fallback for a quick *browser* test:
 > The tunnel URL changes each run, and the server's data is in memory (resets on
 > restart) — fine for testing.
 
-## Path B — Deploy to Render (permanent URL)
+## Path B — Deploy to Render (permanent URL)  ← RECOMMENDED (single origin)
+
+The server serves the built client **and** the API **and** the WebSocket from
+one URL (`server/src/http.ts` → `express.static(client/dist)`), so you don't
+need GitHub Pages at all — one deploy updates everything, and there's no Pages
+build queue to wait on.
+
 1. Push the repo to GitHub (already there).
 2. Go to **render.com → New → Web Service → connect this repo**. It reads
    `render.yaml` (build: `npm install && npm run build --workspace client`,
    start: `npm run start --workspace server`).
-3. Deploy → you get `https://tower-clash-xxxx.onrender.com`. That's your URL.
-   (Free tier sleeps when idle; first open after idle is slow.)
+3. Deploy → you get `https://tower-clash-xxxx.onrender.com`. **That single URL is
+   your Mini App URL** — set it in @BotFather → Bot Settings → Menu Button (and/or
+   the Mini App URL). Leave `VITE_API_BASE` empty so the client talks to its own
+   origin (the default).
+4. **For a real launch**, in Render → Environment set:
+   - `BOT_TOKEN` = your @BotFather token (turns on verified Telegram auth; remove
+     `ALLOW_DEV_AUTH`).
+   - `DATABASE_URL` = a free Postgres (Neon/Supabase) so progress survives restarts.
+
+### Keeping it warm (free tier sleeps after ~15 min idle)
+A cold wake costs the first player a 30–60s stall. Two options:
+- **External pinger** (recommended): point UptimeRobot / cron-job.org at
+  `https://<your-app>.onrender.com/api/health` every 10 min.
+- **Built-in self-ping**: set `KEEPALIVE_URL` = your public health URL
+  (`.../api/health`); the server pings it every `KEEPALIVE_MINUTES` (default 10).
+- Or upgrade to a paid Render instance (no sleep).
 
 A `Dockerfile` is also included if you prefer a Docker host (Railway, Fly.io, a VPS…).
 
-## Path C — GitHub Pages (client) + Render (server)  ← permanent, no tunnel
+## Path C — GitHub Pages (client) + Render (server)  ← alternative (two origins)
+
+> Prefer **Path B** (single origin) for a launch — it's one deploy with no Pages
+> queue. Path C splits hosting only if you specifically want the client on Pages.
+
 GitHub Pages can host **only static files**, so it serves the **client**; the
 **server** (API + WebSocket) still needs a Node host. Split:
 
