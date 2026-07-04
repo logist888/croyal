@@ -85,6 +85,28 @@ export function leagueForTrophies(trophies: number): { index: number; league: Le
   return { index, league: LEAGUES[index], nextMin };
 }
 
+/**
+ * The battlefield art for each league (aligned 1:1 with LEAGUES). The
+ * top two leagues carry two card themes each (see unlocks.ts); the arena
+ * uses the league's headline biome (royal court / legend). The marsh and
+ * desert arenas ship as assets for future variety.
+ */
+export const LEAGUE_ARENA: string[] = [
+  'arena_training',   // Training Camp
+  'arena_forest',     // Forest Clearing
+  'arena_stonefort',  // Stone Fort
+  'arena_fireforge',  // Fire Forge
+  'arena_frostpeak',  // Frost Peak
+  'arena_storm',      // Storm Arena
+  'arena_royal',      // Royal Arena
+  'arena_legend',     // Legend League
+];
+
+/** The arena id a player battles on, chosen by their current league. */
+export function arenaForTrophies(trophies: number): string {
+  return LEAGUE_ARENA[leagueForTrophies(trophies).index] ?? 'arena_training';
+}
+
 /** Account/"king" level derived from wins (legacy; superseded by levelFromXp). */
 export function accountLevel(wins: number): number {
   return Math.max(1, Math.floor(wins / 2) + 1);

@@ -6,7 +6,7 @@
  * HUD (drag-to-deploy). The server's mode decides which one renders.
  */
 import {
-  getCard, canDeployTroop, isWithinField, ARENA_WIDTH, otherSide,
+  getCard, canDeployTroop, isWithinField, ARENA_WIDTH, otherSide, arenaForTrophies,
   COOLDOWN_BATTLE_CONFIG, LEGACY_BATTLE_CONFIG,
   type BattleSnapshot, type MatchResult, type ServerMessage,
 } from '@croyal/shared';
@@ -309,6 +309,7 @@ export async function startBattle(nav: Nav): Promise<void> {
       opponentName = msg.opponent;
       const { w, h } = computeFieldSize();
       root = buildBattleUI();
+      const arenaId = arenaForTrophies(state.profile?.trophies ?? 0);
       field = new GameField('arena', w, h, (tap) => {
         // Armed trio card (spell aim on lanes; any card with free placement).
         if (aimingSpell) {
@@ -326,7 +327,7 @@ export async function startBattle(nav: Nav): Promise<void> {
         socket.send({ t: 'deploy', cardId: id, x: tap.x, y: tap.y });
         hand?.clearSelection();
         haptic('light');
-      });
+      }, arenaId);
     } else if (msg.t === 'battle' && root) {
       onSnapshot(root, msg.snapshot);
     } else if (msg.t === 'matchEnd') {

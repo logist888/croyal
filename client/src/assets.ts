@@ -52,8 +52,10 @@ export const unitImageUrl = (id: string): string | undefined => manifest.units[i
 export const towerImageUrl = (type: string): string | undefined =>
   type === 'king' ? manifest.towers.king : manifest.towers.princess;
 export const bossImageUrl = (): string | undefined => manifest.boss.boss ?? Object.values(manifest.boss)[0];
-export const arenaImageUrl = (): string | undefined =>
-  manifest.arena.background ?? manifest.arena.arena_training ?? Object.values(manifest.arena)[0];
+/** Arena background for a given arena id (falls back to training / any / none). */
+export const arenaImageUrl = (arenaId?: string): string | undefined =>
+  (arenaId ? manifest.arena[arenaId] : undefined)
+  ?? manifest.arena.background ?? manifest.arena.arena_training ?? Object.values(manifest.arena)[0];
 export const menuBgUrl = (): string | undefined => manifest.menuBg ?? undefined;
 
 /** Texture (key,url) list preloaded by the Phaser field. */

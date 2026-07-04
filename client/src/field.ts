@@ -449,7 +449,7 @@ export class GameField {
   private width: number;
   private height: number;
 
-  constructor(parentId: string, width: number, height: number, onTap: (t: FieldTap) => void) {
+  constructor(parentId: string, width: number, height: number, onTap: (t: FieldTap) => void, arenaId?: string) {
     this.width = width;
     this.height = height;
     const scene = new FieldScene();
@@ -466,7 +466,7 @@ export class GameField {
     this.game.scene.start('field', {
       width, height, flip: false, onTap,
       loadList: fieldLoadList(),
-      arenaUrl: arenaImageUrl(),
+      arenaUrl: arenaImageUrl(arenaId),
     });
   }
 
