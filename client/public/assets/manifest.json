@@ -16,9 +16,16 @@
     "bombthrower": "/assets/units/bombthrower.png",
     "ratpack": "/assets/units/ratpack.png"
   },
-  "towers": {},
-  "boss": {},
-  "arena": {},
+  "towers": {
+    "king": "/assets/towers/king.png",
+    "princess": "/assets/towers/princess.png"
+  },
+  "boss": {
+    "boss": "/assets/boss/boss.png"
+  },
+  "arena": {
+    "arena_training": "/assets/arena/arena_training.png"
+  },
   "fx": {},
   "ui": {},
   "menuBg": "/assets/menu-bg.png"
