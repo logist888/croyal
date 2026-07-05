@@ -11,8 +11,9 @@ import {
   validateNickname, validateClanName,
   CHEST_SLOTS, CHEST_DEFS, chestState, gemsToSkip, hasUnlockingChest,
   rollChestRewards, unlockedCards,
+  dayIndex, freshDailyState, loginReward, questClaimable,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
-  type ChestRarity, type BattleRewards,
+  type ChestRarity, type BattleRewards, type DailyState, type QuestType,
 } from '@croyal/shared';
 import { Db } from './db';
 
@@ -97,6 +98,7 @@ export class Store {
       starterBoxesOpened: 0,
       cards,
       chests: [],
+      daily: null,
       clanId: null,
       createdAt: Date.now(),
     };
@@ -138,6 +140,7 @@ export class Store {
     cs.level += 1;
     user.xp += xpForUpgrade(cs.level);
     this.db?.upsertUser(user);
+    this.progressQuest(userId, 'upgrade', 1);
     return user;
   }
 
@@ -254,7 +257,69 @@ export class Store {
       if (cs) cs.count += n;
     }
     this.db?.upsertUser(user);
+    this.progressQuest(userId, 'openChest', 1);
     return { rewards, profile: user };
+  }
+
+  // --- Daily quests & login streak (see shared/daily.ts) ---
+
+  /**
+   * Refresh a user's daily state for the current day: on a new UTC day, roll
+   * fresh quests and advance/reset the login streak. Idempotent within a day.
+   * Called on read (/me) and before any quest-progress mutation.
+   */
+  ensureDaily(userId: string, now = Date.now()): DailyState | null {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    const today = dayIndex(now);
+    if (!user.daily || user.daily.dayIndex !== today) {
+      user.daily = freshDailyState(today, user.daily);
+      this.db?.upsertUser(user);
+    }
+    return user.daily;
+  }
+
+  /** Claim today's login-streak reward (once per day). */
+  claimDailyReward(userId: string, now = Date.now()): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const daily = this.ensureDaily(userId, now)!;
+    if (daily.rewardClaimed) throw new Error('Daily reward already claimed');
+    const reward = loginReward(daily.streak);
+    user.gold += reward.gold;
+    user.gems += reward.gems;
+    daily.rewardClaimed = true;
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  /** Advance any active quest of a type (called from game hooks). No-op if none. */
+  progressQuest(userId: string, type: QuestType, amount = 1, now = Date.now()): void {
+    const daily = this.ensureDaily(userId, now);
+    if (!daily) return;
+    let changed = false;
+    for (const q of daily.quests) {
+      if (q.type !== type || q.claimed || q.progress >= q.target) continue;
+      q.progress = Math.min(q.target, q.progress + amount);
+      changed = true;
+    }
+    if (changed) this.db?.upsertUser(this.users.get(userId)!);
+  }
+
+  /** Claim a completed quest's reward. */
+  claimQuest(userId: string, questId: string, now = Date.now()): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const daily = this.ensureDaily(userId, now)!;
+    const quest = daily.quests.find((q) => q.id === questId);
+    if (!quest) throw new Error('Quest not found');
+    if (quest.claimed) throw new Error('Quest already claimed');
+    if (!questClaimable(quest)) throw new Error('Quest not complete');
+    user.gold += quest.rewardGold;
+    user.gems += quest.rewardGems;
+    quest.claimed = true;
+    this.db?.upsertUser(user);
+    return user;
   }
 
   // --- Sessions ---

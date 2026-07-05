@@ -4,6 +4,7 @@ export * from './cards';
 export * from './pairs';
 export * from './unlocks';
 export * from './chests';
+export * from './daily';
 export * from './validation';
 export * from './deploy';
 export * from './types';

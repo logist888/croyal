@@ -91,8 +91,29 @@ export function createApp() {
   });
 
   app.get('/api/me', requireAuth, (req: AuthedRequest, res: Response) => {
+    store.ensureDaily(req.userId!); // roll a new day's quests/streak on login
     const user = store.getUser(req.userId!);
     res.json({ profile: user ? publicProfile(user) : null, mode: battleMode() });
+  });
+
+  // --- Daily: claim the login-streak reward ---
+  app.post('/api/daily/claim', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.claimDailyReward(req.userId!);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Daily: claim a completed quest ---
+  app.post('/api/daily/quests/:id/claim', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.claimQuest(req.userId!, req.params.id);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
   });
 
   // --- Battle trio: pick the 3 active cards (cooldown model) ---

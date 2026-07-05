@@ -196,6 +196,9 @@ export class Match {
     const earnedChest = isWinner
       ? this.store.awardChest(userId, randomChestRarity(Math.random))
       : null;
+    // Daily-quest progress: every finished match counts as a "play"; wins count.
+    this.store.progressQuest(userId, 'play', 1);
+    if (isWinner) this.store.progressQuest(userId, 'win', 1);
     return { rewards: { gold: goldGain, cards: {} }, earnedChest };
   }
 }

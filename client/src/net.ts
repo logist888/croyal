@@ -42,6 +42,9 @@ export const api = {
   openChest: (id: string, withGems = false) =>
     req<{ rewards: { gold: number; cards: Record<string, number> }; profile: PlayerProfile }>(
       `/api/chests/${id}/open`, { method: 'POST', body: JSON.stringify({ withGems }) }),
+  claimDaily: () => req<{ profile: PlayerProfile }>('/api/daily/claim', { method: 'POST' }),
+  claimQuest: (id: string) =>
+    req<{ profile: PlayerProfile }>(`/api/daily/quests/${id}/claim`, { method: 'POST' }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

@@ -11,6 +11,11 @@ Post-launch work: real art, live infra, and the first retention loop.
   first sink. Server owns timestamp-based state (DB `chests` JSONB column); the
   hub shows a live chest bar with countdowns + gem-skip, and the result screen
   announces the earned chest instead of instant card drops.
+- **Daily quests + login streak** (`shared/daily.ts`): a 7-day login-reward
+  cycle (gold/gems, streak continues on consecutive UTC days) plus 3 rotating
+  daily quests (play / win / open-chest / upgrade) tracked from real game
+  events. UTC-day boundary resets everything; state is timestamp-based (DB
+  `daily` JSONB). New "🎯 Daily" hub screen with a claimable dot.
 - **Reconnect to an in-progress battle** — a dropped socket holds the match open
   for a 30s grace window and resyncs on re-auth instead of auto-forfeiting;
   client auto-reconnects with backoff and shows a "reconnecting" veil.

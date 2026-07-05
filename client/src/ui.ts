@@ -8,7 +8,8 @@ import {
   MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats, TRIO_SIZE, ALL_CARD_IDS,
   pairFor, isCardUnlocked, unlockLeagueIndex,
   CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
-  type ChestSlot,
+  hasDailyRewards, loginReward, questClaimable, DAILY_REWARDS,
+  type ChestSlot, type DailyState, type DailyQuest,
 } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
@@ -30,6 +31,7 @@ export interface Nav {
   toBoss(clanId: string): void;
   toCollection(): void;
   toTrio(): void;
+  toDaily(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -208,6 +210,7 @@ export function renderMenu(nav: Nav): void {
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
     <div class="row">
+      <button id="daily" class="secondary grow">${t('menu.daily')}${p.daily && hasDailyRewards(p.daily) ? ' <span class="claim-dot"></span>' : ''}</button>
       <button id="cards" class="secondary grow">${t('menu.cards')}</button>
       <button id="clans" class="secondary grow">${t('menu.clans')}</button>
     </div>
@@ -249,6 +252,7 @@ export function renderMenu(nav: Nav): void {
   }
 
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
+  node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
   node.querySelector<HTMLButtonElement>('#clans')!.onclick = () => { haptic('light'); nav.toClans(); };
   node.querySelector<HTMLButtonElement>('#edit-trio')?.addEventListener('click', () => { haptic('light'); nav.toTrio(); });
@@ -345,6 +349,90 @@ function showChestReward(chest: ChestSlot, rewards: { gold: number; cards: Recor
   const close = () => overlay.remove();
   overlay.querySelector<HTMLButtonElement>('#x')!.onclick = close;
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
+}
+
+// --- Daily: login-streak reward + daily quests ---
+
+function rewardText(gold: number, gems: number): string {
+  const parts: string[] = [];
+  if (gold) parts.push(`🪙 ${gold}`);
+  if (gems) parts.push(`💎 ${gems}`);
+  return parts.join('  ') || '—';
+}
+
+export async function renderDaily(nav: Nav): Promise<void> {
+  setGameVisible(false);
+  try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
+  const p = state.profile!;
+  const daily: DailyState | null = p.daily ?? null;
+
+  const node = div('screen');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('menu.daily')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div class="card col" id="login"></div>
+    <h2>${t('daily.questsTitle')}</h2>
+    <div class="col" id="quests"></div>`;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+
+  const loginEl = node.querySelector<HTMLDivElement>('#login')!;
+  const questsEl = node.querySelector<HTMLDivElement>('#quests')!;
+
+  const paint = () => {
+    const d = state.profile?.daily ?? null;
+    // --- Login streak track (7-day cycle) ---
+    const streak = d?.streak ?? 1;
+    const pos = ((streak - 1) % DAILY_REWARDS.length);
+    const track = DAILY_REWARDS.map((r, i) => {
+      const cls = i < pos ? 'past' : i === pos ? 'today' : '';
+      return `<div class="day-cell ${cls}"><div class="day-n">${i + 1}</div><div class="day-r">${rewardText(r.gold, r.gems)}</div></div>`;
+    }).join('');
+    const claimed = d?.rewardClaimed ?? true;
+    const rew = loginReward(streak);
+    loginEl.innerHTML = `
+      <div class="row space-between">
+        <b>${t('daily.streak', { n: streak })}</b>
+        <span class="muted">${t('daily.day', { n: pos + 1 })}</span>
+      </div>
+      <div class="day-track">${track}</div>
+      <button id="claim-login" class="accent" ${claimed ? 'disabled' : ''}>
+        ${claimed ? t('daily.claimed') : `${t('daily.claim')} — ${rewardText(rew.gold, rew.gems)}`}
+      </button>`;
+    loginEl.querySelector<HTMLButtonElement>('#claim-login')!.onclick = async () => {
+      try { state.profile = (await api.claimDaily()).profile; haptic('success'); paint(); }
+      catch (e) { haptic('error'); alert((e as Error).message); }
+    };
+
+    // --- Quests ---
+    questsEl.innerHTML = '';
+    for (const q of (d?.quests ?? []) as DailyQuest[]) {
+      const pct = Math.min(100, Math.round((q.progress / q.target) * 100));
+      const canClaim = questClaimable(q);
+      const item = div('card quest-item');
+      item.innerHTML = `
+        <div class="row space-between">
+          <b>${escapeHtml(t(`quest.${q.type}`, { n: q.target }))}</b>
+          <span class="muted">${rewardText(q.rewardGold, q.rewardGems)}</span>
+        </div>
+        <div class="col-bar"><div class="col-fill" style="width:${pct}%"></div></div>
+        <div class="row space-between">
+          <span class="muted">${Math.min(q.progress, q.target)}/${q.target}</span>
+          <button class="quest-claim ${canClaim ? 'accent' : 'secondary'}" ${q.claimed || !canClaim ? 'disabled' : ''}>
+            ${q.claimed ? t('daily.claimed') : t('daily.claim')}
+          </button>
+        </div>`;
+      item.querySelector<HTMLButtonElement>('.quest-claim')!.onclick = async () => {
+        try { state.profile = (await api.claimQuest(q.id)).profile; haptic('success'); paint(); }
+        catch (e) { haptic('error'); alert((e as Error).message); }
+      };
+      questsEl.appendChild(item);
+    }
+    if (!d) questsEl.innerHTML = `<div class="muted">${t('common.loading')}</div>`;
+  };
+  paint();
 }
 
 // --- Battle trio picker: choose exactly TRIO_SIZE cards from the collection ---

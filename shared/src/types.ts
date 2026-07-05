@@ -1,6 +1,7 @@
 import type { Side, TowerType } from './constants';
 import type { DeploymentMode, EconomyMode } from './battle-config';
 import type { ChestSlot, ChestRarity } from './chests';
+import type { DailyState } from './daily';
 
 export type Language = 'en' | 'ru';
 
@@ -27,6 +28,7 @@ export interface PlayerProfile {
   starterBoxesOpened: number;
   cards: Record<string, CardState>; // owned cards (id -> level/count)
   chests: ChestSlot[]; // battle-chest slots (unlock on a timer; see chests.ts)
+  daily: DailyState | null; // login streak + daily quests (see daily.ts); null until first read
   clanId: string | null;
   createdAt: number;
 }

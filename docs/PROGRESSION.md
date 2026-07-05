@@ -39,9 +39,13 @@
   legacy battle core. (Reward drops rotate over the unlocked pool since
   build-15, no longer over the deck.)
 
+- **Daily quests + login streak** (build-16, `shared/daily.ts`) — a 7-day
+  login-reward cycle (streak continues on consecutive UTC days) + 3 rotating
+  daily quests (play / win / open-chest / upgrade) tracked from real events,
+  reset each UTC day. Claim rewards on the "🎯 Daily" hub screen.
+
 ## Planned (next phases)
-- **Daily quests + login rewards**, **seasons / ladder resets**, **leaderboards**
-  (Этап 1 of docs/ROADMAP.ru.md).
+- **Seasons / ladder resets**, **leaderboards** (Этап 1 of docs/ROADMAP.ru.md).
 - **Clan progression** — clan trophies, clan boss tiers, weekly resets.
 - **Seasons & ladder resets.**
 - **Gem sources/sinks** (cosmetics, chest skips).
