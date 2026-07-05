@@ -44,8 +44,11 @@
   daily quests (play / win / open-chest / upgrade) tracked from real events,
   reset each UTC day. Claim rewards on the "🎯 Daily" hub screen.
 
+- **Leaderboards** (build-16) — global top players by trophies (with your own
+  rank) and top clans by summed live member trophies, on the "🏆 Ranking" screen.
+
 ## Planned (next phases)
-- **Seasons / ladder resets**, **leaderboards** (Этап 1 of docs/ROADMAP.ru.md).
+- **Seasons / ladder resets** (Этап 1 of docs/ROADMAP.ru.md).
 - **Clan progression** — clan trophies, clan boss tiers, weekly resets.
 - **Seasons & ladder resets.**
 - **Gem sources/sinks** (cosmetics, chest skips).

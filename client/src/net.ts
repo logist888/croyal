@@ -4,6 +4,7 @@
 import {
   encode, decodeServer, type ClientMessage, type ServerMessage,
   type PlayerProfile, type Clan, type BattleModeInfo,
+  type LeaderboardPlayer, type LeaderboardClan,
 } from '@croyal/shared';
 import { API_BASE, WS_BASE, state } from './state';
 
@@ -45,6 +46,9 @@ export const api = {
   claimDaily: () => req<{ profile: PlayerProfile }>('/api/daily/claim', { method: 'POST' }),
   claimQuest: (id: string) =>
     req<{ profile: PlayerProfile }>(`/api/daily/quests/${id}/claim`, { method: 'POST' }),
+  leaderboardPlayers: () =>
+    req<{ top: LeaderboardPlayer[]; you: LeaderboardPlayer | null }>('/api/leaderboard/players'),
+  leaderboardClans: () => req<{ top: LeaderboardClan[] }>('/api/leaderboard/clans'),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

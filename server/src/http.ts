@@ -116,6 +116,14 @@ export function createApp() {
     }
   });
 
+  // --- Leaderboards ---
+  app.get('/api/leaderboard/players', requireAuth, (req: AuthedRequest, res: Response) => {
+    res.json({ top: store.topPlayers(50), you: store.playerRank(req.userId!) });
+  });
+  app.get('/api/leaderboard/clans', requireAuth, (_req: AuthedRequest, res: Response) => {
+    res.json({ top: store.topClans(50) });
+  });
+
   // --- Battle trio: pick the 3 active cards (cooldown model) ---
   app.post('/api/trio', requireAuth, (req: AuthedRequest, res: Response) => {
     const { trio } = req.body ?? {};

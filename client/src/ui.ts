@@ -32,6 +32,7 @@ export interface Nav {
   toCollection(): void;
   toTrio(): void;
   toDaily(): void;
+  toLeaderboard(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -211,6 +212,9 @@ export function renderMenu(nav: Nav): void {
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
     <div class="row">
       <button id="daily" class="secondary grow">${t('menu.daily')}${p.daily && hasDailyRewards(p.daily) ? ' <span class="claim-dot"></span>' : ''}</button>
+      <button id="leaderboard" class="secondary grow">${t('menu.leaderboard')}</button>
+    </div>
+    <div class="row">
       <button id="cards" class="secondary grow">${t('menu.cards')}</button>
       <button id="clans" class="secondary grow">${t('menu.clans')}</button>
     </div>
@@ -253,6 +257,7 @@ export function renderMenu(nav: Nav): void {
 
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
   node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
+  node.querySelector<HTMLButtonElement>('#leaderboard')!.onclick = () => { haptic('light'); nav.toLeaderboard(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
   node.querySelector<HTMLButtonElement>('#clans')!.onclick = () => { haptic('light'); nav.toClans(); };
   node.querySelector<HTMLButtonElement>('#edit-trio')?.addEventListener('click', () => { haptic('light'); nav.toTrio(); });
@@ -433,6 +438,67 @@ export async function renderDaily(nav: Nav): Promise<void> {
     if (!d) questsEl.innerHTML = `<div class="muted">${t('common.loading')}</div>`;
   };
   paint();
+}
+
+// --- Leaderboards: top players / top clans ---
+
+export async function renderLeaderboard(nav: Nav): Promise<void> {
+  setGameVisible(false);
+  const meId = state.profile?.id;
+  const node = div('screen');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('menu.leaderboard')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div class="row lb-tabs">
+      <button id="tab-players" class="grow active">${t('lb.players')}</button>
+      <button id="tab-clans" class="secondary grow">${t('lb.clans')}</button>
+    </div>
+    <div id="lb-body" class="col">${t('common.loading')}</div>`;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+  const body = node.querySelector<HTMLDivElement>('#lb-body')!;
+  const tabP = node.querySelector<HTMLButtonElement>('#tab-players')!;
+  const tabC = node.querySelector<HTMLButtonElement>('#tab-clans')!;
+
+  const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`);
+
+  const showPlayers = async () => {
+    tabP.className = 'grow active'; tabC.className = 'secondary grow';
+    body.innerHTML = t('common.loading');
+    try {
+      const { top, you } = await api.leaderboardPlayers();
+      const rows = top.map((e) => `
+        <div class="list-item lb-row ${e.userId === meId ? 'me' : ''}">
+          <div class="row" style="gap:10px"><span class="lb-rank">${medal(e.rank)}</span><b>${escapeHtml(e.nickname)}</b></div>
+          <span class="lb-tr">🏆 ${e.trophies}</span>
+        </div>`).join('');
+      const youRow = you && !top.some((e) => e.userId === meId)
+        ? `<div class="muted" style="margin-top:6px">${t('lb.yourRank')}</div>
+           <div class="list-item lb-row me"><div class="row" style="gap:10px"><span class="lb-rank">${medal(you.rank)}</span><b>${escapeHtml(you.nickname)}</b></div><span class="lb-tr">🏆 ${you.trophies}</span></div>`
+        : '';
+      body.innerHTML = (rows || `<div class="muted">${t('lb.empty')}</div>`) + youRow;
+    } catch (e) { body.innerHTML = `<div class="error">${escapeHtml((e as Error).message)}</div>`; }
+  };
+
+  const showClans = async () => {
+    tabC.className = 'grow active'; tabP.className = 'secondary grow';
+    body.innerHTML = t('common.loading');
+    try {
+      const { top } = await api.leaderboardClans();
+      body.innerHTML = top.map((e) => `
+        <div class="list-item lb-row">
+          <div class="row" style="gap:10px"><span class="lb-rank">${medal(e.rank)}</span>
+            <div><b>${escapeHtml(e.name)}</b><div class="muted">${t('clans.members', { n: e.memberCount })}</div></div></div>
+          <span class="lb-tr">🏆 ${e.trophies}</span>
+        </div>`).join('') || `<div class="muted">${t('lb.empty')}</div>`;
+    } catch (e) { body.innerHTML = `<div class="error">${escapeHtml((e as Error).message)}</div>`; }
+  };
+
+  tabP.onclick = () => { haptic('light'); void showPlayers(); };
+  tabC.onclick = () => { haptic('light'); void showClans(); };
+  void showPlayers();
 }
 
 // --- Battle trio picker: choose exactly TRIO_SIZE cards from the collection ---

@@ -95,6 +95,11 @@ const EN: Dict = {
 
   'menu.cards': '🃏 Cards',
   'menu.daily': '🎯 Daily',
+  'menu.leaderboard': '🏆 Ranking',
+  'lb.players': 'Players',
+  'lb.clans': 'Clans',
+  'lb.yourRank': 'Your rank:',
+  'lb.empty': 'No players yet — be the first!',
   'daily.questsTitle': 'Daily quests',
   'daily.streak': '🔥 {n}-day streak',
   'daily.day': 'Day {n}/7',
@@ -266,6 +271,11 @@ const RU: Dict = {
 
   'menu.cards': '🃏 Карты',
   'menu.daily': '🎯 Задания',
+  'menu.leaderboard': '🏆 Рейтинг',
+  'lb.players': 'Игроки',
+  'lb.clans': 'Кланы',
+  'lb.yourRank': 'Твоё место:',
+  'lb.empty': 'Игроков пока нет — стань первым!',
   'daily.questsTitle': 'Ежедневные задания',
   'daily.streak': '🔥 Серия: {n} дн.',
   'daily.day': 'День {n}/7',

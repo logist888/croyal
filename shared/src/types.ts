@@ -51,6 +51,24 @@ export interface Clan {
   members: ClanMember[];
 }
 
+// --- Leaderboards ---
+
+export interface LeaderboardPlayer {
+  rank: number;
+  userId: string;
+  nickname: string;
+  trophies: number;
+  wins: number;
+}
+
+export interface LeaderboardClan {
+  rank: number;
+  clanId: string;
+  name: string;
+  memberCount: number;
+  trophies: number; // sum of members' live trophies
+}
+
 // --- Battle snapshot (server -> client) ---
 
 export type EntityKind = 'tower' | 'unit' | 'building';

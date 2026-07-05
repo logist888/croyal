@@ -14,6 +14,7 @@ import {
   dayIndex, freshDailyState, loginReward, questClaimable,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
   type ChestRarity, type BattleRewards, type DailyState, type QuestType,
+  type LeaderboardPlayer, type LeaderboardClan,
 } from '@croyal/shared';
 import { Db } from './db';
 
@@ -320,6 +321,51 @@ export class Store {
     quest.claimed = true;
     this.db?.upsertUser(user);
     return user;
+  }
+
+  // --- Leaderboards ---
+
+  /** All players sorted by trophies desc (tiebreak: wins, then earliest joined). */
+  private rankedPlayers(): PlayerProfile[] {
+    return [...this.users.values()].sort(
+      (a, b) => b.trophies - a.trophies || b.wins - a.wins || a.createdAt - b.createdAt,
+    );
+  }
+
+  /** Global top players by trophies. */
+  topPlayers(limit = 50): LeaderboardPlayer[] {
+    return this.rankedPlayers().slice(0, limit).map((u, i) => ({
+      rank: i + 1,
+      userId: u.id,
+      nickname: u.nickname,
+      trophies: u.trophies,
+      wins: u.wins,
+    }));
+  }
+
+  /** The current player's global rank + row (1-based), or null if unknown. */
+  playerRank(userId: string): LeaderboardPlayer | null {
+    const ranked = this.rankedPlayers();
+    const idx = ranked.findIndex((u) => u.id === userId);
+    if (idx < 0) return null;
+    const u = ranked[idx];
+    return { rank: idx + 1, userId: u.id, nickname: u.nickname, trophies: u.trophies, wins: u.wins };
+  }
+
+  /** Top clans by summed LIVE member trophies (members' current profiles). */
+  topClans(limit = 50): LeaderboardClan[] {
+    const scored = [...this.clans.values()].map((c) => {
+      const trophies = c.members.reduce((s, m) => s + (this.users.get(m.userId)?.trophies ?? m.trophies), 0);
+      return { clan: c, trophies };
+    });
+    scored.sort((a, b) => b.trophies - a.trophies || b.clan.members.length - a.clan.members.length);
+    return scored.slice(0, limit).map((s, i) => ({
+      rank: i + 1,
+      clanId: s.clan.id,
+      name: s.clan.name,
+      memberCount: s.clan.members.length,
+      trophies: s.trophies,
+    }));
   }
 
   // --- Sessions ---

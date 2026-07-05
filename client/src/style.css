@@ -476,3 +476,10 @@ input[type="text"]::placeholder { color: #9b8763; }
 .day-r { font-weight: 700; line-height: 1.1; }
 .quest-item { padding: 12px; gap: 6px; }
 .quest-claim { padding: 6px 14px; font-size: 13px; }
+
+/* ===== Leaderboard ===== */
+.lb-tabs button.active { outline: 3px solid var(--gold-1); outline-offset: 1px; }
+.lb-row { align-items: center; }
+.lb-row.me { border-color: var(--gold-1); box-shadow: inset 0 0 0 1px var(--gold-1), 0 0 8px rgba(255,216,102,0.4); }
+.lb-rank { display: inline-block; min-width: 26px; text-align: center; font-weight: 900; color: var(--gold-1); }
+.lb-tr { font-weight: 900; white-space: nowrap; }

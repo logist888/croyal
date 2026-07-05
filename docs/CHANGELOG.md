@@ -16,6 +16,10 @@ Post-launch work: real art, live infra, and the first retention loop.
   daily quests (play / win / open-chest / upgrade) tracked from real game
   events. UTC-day boundary resets everything; state is timestamp-based (DB
   `daily` JSONB). New "🎯 Daily" hub screen with a claimable dot.
+- **Leaderboards**: global top players by trophies (tiebreak wins → earliest
+  joined) with the caller's own rank, and top clans by summed LIVE member
+  trophies. New "🏆 Ranking" hub screen with players/clans tabs and a
+  self-highlight row.
 - **Reconnect to an in-progress battle** — a dropped socket holds the match open
   for a 30s grace window and resyncs on re-auth instead of auto-forfeiting;
   client auto-reconnects with backoff and shows a "reconnecting" veil.
