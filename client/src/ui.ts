@@ -7,12 +7,20 @@ import {
   leagueForTrophies, levelFromXp, averageElixir, averageCooldown, RARITY_COLOR, LEAGUES,
   MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats, TRIO_SIZE, ALL_CARD_IDS,
   pairFor, isCardUnlocked, unlockLeagueIndex,
+  CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
+  type ChestSlot,
 } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
-import { cardImageUrl, asset } from './assets';
+import { cardImageUrl, uiImageUrl, asset } from './assets';
+
+/** Live countdown ticker for the hub chest bar (cleared on any screen change). */
+let chestTicker: ReturnType<typeof setInterval> | null = null;
+function stopChestTicker(): void {
+  if (chestTicker) { clearInterval(chestTicker); chestTicker = null; }
+}
 
 export interface Nav {
   toMenu(): void;
@@ -28,6 +36,7 @@ const uiRoot = () => document.getElementById('ui')!;
 const gameRoot = () => document.getElementById('game')!;
 
 export function setUI(node: HTMLElement): void {
+  stopChestTicker(); // any screen change kills the hub chest countdown
   const ui = uiRoot();
   ui.innerHTML = '';
   ui.appendChild(node);
@@ -211,8 +220,15 @@ export function renderMenu(nav: Nav): void {
       <div class="hand${cooldownMode ? ' trio' : ''}" id="deck"></div>
       ${cooldownMode ? `<button id="edit-trio" class="secondary" style="margin-top:8px">${t('trio.edit')}</button>` : ''}
     </div>
+
+    <div class="card">
+      <div class="muted" style="margin-bottom:6px">${t('chest.title')}</div>
+      <div class="chest-bar" id="chest-bar"></div>
+    </div>
   `;
   setUI(node);
+
+  renderChestBar(node.querySelector<HTMLDivElement>('#chest-bar')!, nav);
 
   const deck = node.querySelector<HTMLDivElement>('#deck')!;
   for (const id of cooldownMode ? p.trio : p.deck) {
@@ -236,6 +252,99 @@ export function renderMenu(nav: Nav): void {
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
   node.querySelector<HTMLButtonElement>('#clans')!.onclick = () => { haptic('light'); nav.toClans(); };
   node.querySelector<HTMLButtonElement>('#edit-trio')?.addEventListener('click', () => { haptic('light'); nav.toTrio(); });
+}
+
+// --- Chests: hub slot bar (unlock timers + open) ---
+
+/** Compact countdown: "2ч 05м" / "12м 30с" / "45с". */
+function fmtChestTime(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h > 0) return `${h}${t('chest.h')} ${String(m).padStart(2, '0')}${t('chest.m')}`;
+  if (m > 0) return `${m}${t('chest.m')} ${String(sec).padStart(2, '0')}${t('chest.s')}`;
+  return `${sec}${t('chest.s')}`;
+}
+
+function renderChestBar(bar: HTMLDivElement, nav: Nav): void {
+  const paint = () => {
+    const p = state.profile;
+    if (!p) return;
+    const now = Date.now();
+    const chests = p.chests ?? [];
+    const anyUnlocking = hasUnlockingChest(chests, now);
+    bar.innerHTML = '';
+    for (let i = 0; i < CHEST_SLOTS; i++) {
+      const chest = chests[i];
+      const cell = div('chest-slot');
+      if (!chest) { cell.classList.add('empty'); cell.innerHTML = '<span class="chest-empty">+</span>'; bar.appendChild(cell); continue; }
+      const st = chestState(chest, now);
+      const art = uiImageUrl(`chest_${chest.rarity}`);
+      const img = art
+        ? `<div class="chest-img" style="background-image:url(${art})"></div>`
+        : `<div class="chest-img" style="background:${hex(CHEST_DEFS[chest.rarity].color)}"></div>`;
+      cell.classList.add(`chest-${st}`);
+      if (st === 'idle') {
+        cell.innerHTML = `${img}<div class="chest-cap">${escapeHtml(t(`chest.rarity.${chest.rarity}`))}</div>
+          <button class="chest-act secondary" ${anyUnlocking ? 'disabled' : ''}>${t('chest.start')}</button>`;
+        cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = async () => {
+          try { state.profile = (await api.unlockChest(chest.id)).profile; haptic('light'); paint(); }
+          catch (e) { alert((e as Error).message); }
+        };
+      } else if (st === 'unlocking') {
+        const cost = gemsToSkip(chest, now);
+        cell.innerHTML = `${img}<div class="chest-cap chest-time">${fmtChestTime(chestRemainingMs(chest, now))}</div>
+          <button class="chest-act accent">💎 ${cost}</button>`;
+        cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = () => openChestFlow(nav, chest, true, paint);
+      } else {
+        cell.innerHTML = `${img}<div class="chest-cap chest-ready">${t('chest.open')}</div>
+          <button class="chest-act accent">${t('chest.open')}</button>`;
+        cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = () => openChestFlow(nav, chest, false, paint);
+      }
+      bar.appendChild(cell);
+    }
+  };
+  paint();
+  stopChestTicker();
+  // Repaint every second so countdowns tick and "ready" flips live.
+  chestTicker = setInterval(paint, 1000);
+}
+
+async function openChestFlow(nav: Nav, chest: ChestSlot, withGems: boolean, repaint: () => void): Promise<void> {
+  try {
+    const { rewards, profile } = await api.openChest(chest.id, withGems);
+    state.profile = profile;
+    haptic('success');
+    repaint();
+    showChestReward(chest, rewards);
+  } catch (e) {
+    haptic('error');
+    alert((e as Error).message);
+    repaint();
+  }
+}
+
+function showChestReward(chest: ChestSlot, rewards: { gold: number; cards: Record<string, number> }): void {
+  const overlay = div('modal-overlay');
+  const art = uiImageUrl(`chest_${chest.rarity}`);
+  const cardTiles = Object.entries(rewards.cards).map(([id, n]) => {
+    const c = getCard(id);
+    const ca = cardImageUrl(id);
+    const bg = ca
+      ? `background-image:url(${ca});background-size:contain;background-repeat:no-repeat;background-position:center`
+      : `background:${c ? hex(c.color) : '#555'}`;
+    return `<div class="reward"><div class="reward-card" style="${bg}"></div><b>×${n}</b></div>`;
+  }).join('');
+  overlay.innerHTML = `
+    <div class="modal card col" style="align-items:center">
+      <h2>${escapeHtml(t(`chest.rarity.${chest.rarity}`))}</h2>
+      ${art ? `<div class="chest-img big" style="background-image:url(${art})"></div>` : ''}
+      <div class="row" style="gap:8px"><span class="badge">🪙 ${rewards.gold}</span></div>
+      <div class="reward-row">${cardTiles}</div>
+      <button id="x" class="accent">${t('common.back')}</button>`;
+  document.getElementById('ui')!.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector<HTMLButtonElement>('#x')!.onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
 }
 
 // --- Battle trio picker: choose exactly TRIO_SIZE cards from the collection ---

@@ -1,5 +1,6 @@
 import type { Side, TowerType } from './constants';
 import type { DeploymentMode, EconomyMode } from './battle-config';
+import type { ChestSlot, ChestRarity } from './chests';
 
 export type Language = 'en' | 'ru';
 
@@ -25,6 +26,7 @@ export interface PlayerProfile {
   /** Starter boxes revealed during onboarding (>= STARTER_BOX_COUNT = done). */
   starterBoxesOpened: number;
   cards: Record<string, CardState>; // owned cards (id -> level/count)
+  chests: ChestSlot[]; // battle-chest slots (unlock on a timer; see chests.ts)
   clanId: string | null;
   createdAt: number;
 }
@@ -140,7 +142,9 @@ export interface MatchResult {
   yourScore: number;
   opponentScore: number;
   trophyDelta: number;
-  rewards: BattleRewards; // battle chest contents
+  rewards: BattleRewards; // immediate gold (cards now come from the earned chest)
+  /** Chest awarded into a slot this match: rarity, or null (loss / slots full). */
+  earnedChest: ChestRarity | null;
 }
 
 // --- Boss raid snapshot ---

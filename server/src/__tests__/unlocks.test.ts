@@ -96,20 +96,30 @@ describe('store.setTrio league gate', () => {
 });
 
 describe('battle-chest drops respect unlocks', () => {
-  it('a finished match only awards cards from the loser/winner unlocked pools', () => {
+  it('a loss forfeit grants no instant cards (rewards are now chest-gated)', () => {
     const store = new Store();
     const user = store.createUser({ telegramId: 10, nickname: 'DropTester', language: 'en' });
     const seatA: MatchSeat = { userId: user.id, deck: [...user.trio], send: () => {} };
     const seatB: MatchSeat = { userId: null, deck: [...DEFAULT_TRIO], send: () => {} };
     const match = new Match('drop-test', seatA, seatB, store, () => {}, COOLDOWN_BATTLE_CONFIG);
-    match.handleLeave(user.id); // instant forfeit -> persist() runs with trophies=0
-
+    match.handleLeave(user.id); // forfeit -> loss: no chest, no cards
     const after = store.getUser(user.id)!;
+    expect(after.chests.length).toBe(0);
+    expect(Object.values(after.cards).every((c) => c.count === 0)).toBe(true);
+  });
+
+  it('opening a chest only yields cards from the player\'s unlocked pool', () => {
+    const store = new Store();
+    const user = store.createUser({ telegramId: 11, nickname: 'ChestUnlock', language: 'en' }); // 0 trophies
+    store.awardChest(user.id, 'gold');
+    const chest = store.getUser(user.id)!.chests[0];
+    const t0 = 1_000_000;
+    store.startChestUnlock(user.id, chest.id, t0);
+    const ready = t0 + 999 * 60000;
+    const { rewards } = store.openChest(user.id, chest.id, {}, ready, () => 0.5);
     const allowed = new Set(unlockedCards(0));
-    const dropped = Object.entries(after.cards).filter(([, cs]) => cs.count > 0);
-    expect(dropped.length).toBeGreaterThan(0); // the loss chest still drops something
-    for (const [id] of dropped) {
-      expect(allowed.has(id), `dropped locked card ${id}`).toBe(true);
+    for (const id of Object.keys(rewards.cards)) {
+      expect(allowed.has(id), `chest dropped locked card ${id}`).toBe(true);
     }
   });
 });

@@ -12,7 +12,7 @@ import {
 } from '@croyal/shared';
 import { socket } from './net';
 import { state } from './state';
-import { setUI, setGameVisible, hex, escapeHtml, type Nav } from './ui';
+import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
 import { GameField, type FieldTap } from './field';
 import {
   buildHand, buildTrioHand, computeFieldSize, elixirBarHtml, setElixir, fmtTime,
@@ -21,7 +21,7 @@ import {
 import { beginCardDrag } from './deploy-drag';
 import { haptic } from './telegram';
 import { t, reasonText, cardName } from './i18n';
-import { cardImageUrl } from './assets';
+import { cardImageUrl, uiImageUrl } from './assets';
 
 export async function startBattle(nav: Nav): Promise<void> {
   let field: GameField | null = null;
@@ -254,44 +254,36 @@ export async function startBattle(nav: Nav): Promise<void> {
     const win = result.outcome === 'win';
     haptic(win ? 'success' : 'error');
     const crowns = (n: number) => '👑'.repeat(n) + '·'.repeat(Math.max(0, 3 - n));
+
+    // A win earns a chest into a hub slot (its cards are claimed there). Slots
+    // full on a win => a nudge to go open one. Losses earn no chest.
+    let chestBlock = '';
+    if (result.earnedChest) {
+      const art = uiImageUrl(`chest_${result.earnedChest}`);
+      const chestArt = art
+        ? `<div class="chest-img big" style="background-image:url(${art})"></div>`
+        : '<div style="font-size:54px">🎁</div>';
+      chestBlock = `
+        <div class="card col" style="align-items:center">
+          ${chestArt}
+          <b>${escapeHtml(t('result.earnedChest', { rarity: t(`chest.rarity.${result.earnedChest}`) }))}</b>
+        </div>`;
+    } else if (win) {
+      chestBlock = `<div class="card col" style="align-items:center"><div class="muted">${t('result.chestFull')}</div></div>`;
+    }
+
     node.innerHTML = `
       <h1>${win ? t('battle.victory') : t('battle.defeat')}</h1>
       <div class="card col" style="align-items:center">
         <div style="font-size:26px; letter-spacing:6px">${crowns(result.yourScore)} <span class="muted" style="font-size:14px">vs</span> ${crowns(result.opponentScore)}</div>
         <div class="muted">${t('battle.reason', { reason: reasonText(result.reason) })}</div>
         <div>${t('battle.trophies', { delta: (result.trophyDelta >= 0 ? '+' : '') + result.trophyDelta })}</div>
+        <div class="row" style="gap:8px"><span class="badge">🪙 +${result.rewards.gold}</span></div>
       </div>
-      <div class="card col" id="chest" style="align-items:center">
-        <div class="muted">${t('result.chest')}</div>
-        <div style="font-size:54px">🎁</div>
-        <button id="open" class="accent">${t('result.open')}</button>
-      </div>
-      <button id="ok" class="accent" style="display:none">${t('battle.backToMenu')}</button>`;
+      ${chestBlock}
+      <button id="ok" class="accent">${t('battle.backToMenu')}</button>`;
     setUI(node);
-
-    const rewardTile = (id: string, n: number) => {
-      const c = getCard(id);
-      const art = cardImageUrl(id);
-      const bg = art
-        ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center`
-        : `background:${c ? hex(c.color) : '#555'}`;
-      return `<div class="reward"><div class="reward-card" style="${bg}"></div><b>x${n}</b></div>`;
-    };
-
-    const ok = node.querySelector<HTMLButtonElement>('#ok')!;
-    ok.onclick = () => nav.toMenu();
-    node.querySelector<HTMLButtonElement>('#open')!.onclick = () => {
-      haptic('success');
-      const chest = node.querySelector<HTMLDivElement>('#chest')!;
-      const cards = Object.entries(result.rewards.cards);
-      chest.innerHTML = `
-        <div class="muted">${t('result.received')}</div>
-        <div class="reward-row">
-          <div class="reward"><div class="reward-card" style="display:flex;align-items:center;justify-content:center;font-size:22px">🪙</div><b>+${result.rewards.gold}</b></div>
-          ${cards.map(([id, n]) => rewardTile(id, n)).join('')}
-        </div>`;
-      ok.style.display = '';
-    };
+    node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toMenu();
   }
 
   try {

@@ -1151,6 +1151,7 @@ export class Simulation {
       opponentScore: this.towersDestroyed[otherSide(winner)],
       trophyDelta: 0, // filled in by the match controller
       rewards: { gold: 0, cards: {} }, // real rewards attached by the match controller
+      earnedChest: null, // set by the match controller on a win
     };
   }
 

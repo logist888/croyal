@@ -9,7 +9,10 @@ import {
   STARTER_BOX_COUNT, STARTER_POOL, getCard, isCardUnlocked,
   cardsToUpgrade, goldToUpgrade, xpForUpgrade,
   validateNickname, validateClanName,
+  CHEST_SLOTS, CHEST_DEFS, chestState, gemsToSkip, hasUnlockingChest,
+  rollChestRewards, unlockedCards,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
+  type ChestRarity, type BattleRewards,
 } from '@croyal/shared';
 import { Db } from './db';
 
@@ -93,6 +96,7 @@ export class Store {
       trio: [...DEFAULT_TRIO],
       starterBoxesOpened: 0,
       cards,
+      chests: [],
       clanId: null,
       createdAt: Date.now(),
     };
@@ -185,6 +189,72 @@ export class Store {
       if (cs) cs.count += n;
     }
     this.db?.upsertUser(user);
+  }
+
+  // --- Battle chests (retention loop, see shared/chests.ts) ---
+
+  /**
+   * Drop a chest into the first free slot (won matches). Returns the rarity if
+   * placed, or null when all slots are full (the chest is forfeited — the CR
+   * "chests can be full" pressure to open them).
+   */
+  awardChest(userId: string, rarity: ChestRarity): ChestRarity | null {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    if (user.chests.length >= CHEST_SLOTS) return null;
+    user.chests.push({ id: randomUUID(), rarity, unlockAt: null });
+    this.db?.upsertUser(user);
+    return rarity;
+  }
+
+  /** Start a chest's unlock timer. Only ONE chest may unlock at a time. */
+  startChestUnlock(userId: string, chestId: string, now = Date.now()): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const chest = user.chests.find((c) => c.id === chestId);
+    if (!chest) throw new Error('Chest not found');
+    if (chestState(chest, now) !== 'idle') throw new Error('Chest already unlocking');
+    if (hasUnlockingChest(user.chests, now)) throw new Error('Another chest is already unlocking');
+    chest.unlockAt = now + CHEST_DEFS[chest.rarity].unlockMinutes * 60000;
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  /**
+   * Open a chest: free when the timer has elapsed, or instantly for gems.
+   * Grants gold + duplicate cards drawn from the player's UNLOCKED pool, then
+   * frees the slot. Returns the rewards and the updated profile.
+   */
+  openChest(
+    userId: string,
+    chestId: string,
+    opts: { withGems?: boolean } = {},
+    now = Date.now(),
+    rng: () => number = Math.random,
+  ): { rewards: BattleRewards; profile: PlayerProfile } {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const idx = user.chests.findIndex((c) => c.id === chestId);
+    if (idx < 0) throw new Error('Chest not found');
+    const chest = user.chests[idx];
+    const state = chestState(chest, now);
+    if (state !== 'ready') {
+      if (!opts.withGems) throw new Error('Chest not ready');
+      const cost = gemsToSkip(chest, now);
+      if (user.gems < cost) throw new Error('Not enough gems');
+      user.gems -= cost;
+    }
+    const pool = unlockedCards(user.trophies);
+    const legendaryPool = pool.filter((id) => getCard(id)?.rarity === 'legendary');
+    const rewards = rollChestRewards(chest.rarity, pool, rng, legendaryPool);
+    user.chests.splice(idx, 1);
+    user.gold += rewards.gold;
+    for (const [cardId, n] of Object.entries(rewards.cards)) {
+      const cs = user.cards[cardId];
+      if (cs) cs.count += n;
+    }
+    this.db?.upsertUser(user);
+    return { rewards, profile: user };
   }
 
   // --- Sessions ---

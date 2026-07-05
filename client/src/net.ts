@@ -37,6 +37,11 @@ export const api = {
   openStarterBox: () =>
     req<{ cardId: string; opened: number; total: number; profile: PlayerProfile }>(
       '/api/starter/open', { method: 'POST' }),
+  unlockChest: (id: string) =>
+    req<{ profile: PlayerProfile }>(`/api/chests/${id}/unlock`, { method: 'POST' }),
+  openChest: (id: string, withGems = false) =>
+    req<{ rewards: { gold: number; cards: Record<string, number> }; profile: PlayerProfile }>(
+      `/api/chests/${id}/open`, { method: 'POST', body: JSON.stringify({ withGems }) }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

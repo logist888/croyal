@@ -3,6 +3,25 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-16 — Retention (Этап 1) + launch hardening
+Post-launch work: real art, live infra, and the first retention loop.
+- **Battle chests with unlock timers** (`shared/chests.ts`): a win drops a
+  weighted chest into one of 4 slots; chests unlock on a timer (one at a time)
+  and open for gold + unlocked-pool cards, or gems skip the wait. Gives gems a
+  first sink. Server owns timestamp-based state (DB `chests` JSONB column); the
+  hub shows a live chest bar with countdowns + gem-skip, and the result screen
+  announces the earned chest instead of instant card drops.
+- **Reconnect to an in-progress battle** — a dropped socket holds the match open
+  for a 30s grace window and resyncs on re-auth instead of auto-forfeiting;
+  client auto-reconnects with backoff and shows a "reconnecting" veil.
+- **Arena per league** — each of the 8 leagues battles on its own arena.
+- **Full art set** (221 assets) imported and sliced; **bigger towers / smaller
+  troops** for a readable king > princess > unit hierarchy.
+- **Launch infra**: single-origin Render hosting (server serves the client),
+  optional keep-warm ping, verified Telegram auth default, Neon Postgres
+  persistence verified end-to-end.
+- Tests 119 → **140** (chests, reconnect grace, arena mapping).
+
 ## build-15 — Content expansion: 80 cards, statuses, league unlocks, art pipeline
 The full content layer on top of the build-14 battle core. Four milestones.
 - **Status-effect framework (M1).** One unified stack (`Entity.statuses`):

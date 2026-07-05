@@ -3,8 +3,9 @@
  * snapshots, runs the bot opponent (when there is no human), and reports results.
  */
 import {
-  TICK_DT, SNAPSHOT_RATE, TICK_RATE, unlockedCards,
+  TICK_DT, SNAPSHOT_RATE, TICK_RATE, randomChestRarity,
   otherSide, type Side, type ServerMessage, type MatchResult, type BattleRewards, type BattleConfig,
+  type ChestRarity,
 } from '@croyal/shared';
 import { Simulation } from './simulation';
 import { ACTIVE_BATTLE_CONFIG } from './active-config';
@@ -162,7 +163,7 @@ export class Match {
       if (!seat.userId) continue;
       const isWinner = side === winner;
       const delta = isWinner ? WIN_TROPHIES : -LOSS_TROPHIES;
-      const rewards = this.persist(seat.userId, isWinner, delta);
+      const { rewards, earnedChest } = this.persist(seat.userId, isWinner, delta);
       const result: MatchResult = {
         outcome: isWinner ? 'win' : 'loss',
         reason,
@@ -170,34 +171,32 @@ export class Match {
         opponentScore: side === winner ? scoreLoser : scoreWinner,
         trophyDelta: delta,
         rewards,
+        earnedChest,
       };
       seat.send({ t: 'matchEnd', result });
     }
   }
 
-  private persist(userId: string, isWinner: boolean, delta: number): BattleRewards {
+  /**
+   * Apply match outcome: trophies/wins/losses + immediate gold, and — on a win —
+   * drop a battle chest into a free slot (its cards are claimed later when the
+   * chest is opened; see store.openChest). Cards are no longer granted instantly.
+   */
+  private persist(userId: string, isWinner: boolean, delta: number): { rewards: BattleRewards; earnedChest: ChestRarity | null } {
     const user = this.store.getUser(userId);
-    if (!user) return { gold: 0, cards: {} };
-    // Battle-chest contents: gold + duplicate cards from the player's UNLOCKED
-    // pool (league progression makes new leagues feed new cards). Winner gets
-    // more; deterministic rotation by games played.
+    if (!user) return { rewards: { gold: 0, cards: {} }, earnedChest: null };
     const goldGain = isWinner ? 50 : 10;
-    const n = isWinner ? 3 : 1;
-    const pool = unlockedCards(user.trophies);
-    const start = (user.wins + user.losses) % Math.max(1, pool.length);
-    const drops: Record<string, number> = {};
-    for (let i = 0; i < n; i++) {
-      const id = pool[(start + i) % pool.length];
-      drops[id] = (drops[id] ?? 0) + 1;
-    }
     this.store.updateUser(userId, {
       trophies: Math.max(0, user.trophies + delta),
       wins: user.wins + (isWinner ? 1 : 0),
       losses: user.losses + (isWinner ? 0 : 1),
       gold: user.gold + goldGain,
     });
-    this.store.awardCards(userId, drops);
-    return { gold: goldGain, cards: drops };
+    // A win earns a chest (rarity weighted); forfeited if all 4 slots are full.
+    const earnedChest = isWinner
+      ? this.store.awardChest(userId, randomChestRarity(Math.random))
+      : null;
+    return { rewards: { gold: goldGain, cards: {} }, earnedChest };
   }
 }
 

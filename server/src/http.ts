@@ -127,6 +127,27 @@ export function createApp() {
     }
   });
 
+  // --- Chests: start the unlock timer ---
+  app.post('/api/chests/:id/unlock', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.startChestUnlock(req.userId!, req.params.id);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Chests: open (free when ready, or `?gems=1` to skip the timer) ---
+  app.post('/api/chests/:id/open', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const withGems = req.body?.withGems === true || req.query.gems === '1';
+      const { rewards, profile } = store.openChest(req.userId!, req.params.id, { withGems });
+      res.json({ rewards, profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
   // --- Clans ---
   app.get('/api/clans', requireAuth, (_req: AuthedRequest, res: Response) => {
     res.json({ clans: store.listClans().map(clanSummary) });

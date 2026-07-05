@@ -20,8 +20,12 @@
   (`200 × difficulty` gold on a co-op win). The upgrade currency.
 - **Gems** — currency field present (no sink/source wired yet).
 - **Boss rewards** — gold scaled by the co-op difficulty multiplier.
-- **Battle chest** — post-match drops: 3 duplicates on a win, 1 on a loss,
-  rotating deterministically over the player's unlocked pool.
+- **Battle chests with unlock timers** (build-16, `shared/chests.ts`) — a win
+  drops a chest (rarity weighted: wood→legendary) into one of 4 slots. Chests
+  unlock on a timer (only ONE at a time); a ready chest is opened for gold +
+  duplicate cards from the player's unlocked pool, or gems skip the timer
+  (1 gem per 10 min remaining). Slots can fill up — pressure to open. Timers are
+  timestamp-based (no background job). Losses earn no chest; gold is immediate.
 
 ## Battle trio (cooldown mode — the default since build-14)
 - Every player has a 3-card `trio` (default `DEFAULT_TRIO`), edited in the hub
@@ -36,8 +40,8 @@
   build-15, no longer over the deck.)
 
 ## Planned (next phases)
-- **Chests with unlock timers** (current chest opens instantly on the result
-  screen).
+- **Daily quests + login rewards**, **seasons / ladder resets**, **leaderboards**
+  (Этап 1 of docs/ROADMAP.ru.md).
 - **Clan progression** — clan trophies, clan boss tiers, weekly resets.
 - **Seasons & ladder resets.**
 - **Gem sources/sinks** (cosmetics, chest skips).

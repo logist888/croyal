@@ -49,6 +49,7 @@ export async function loadAssetManifest(): Promise<void> {
 
 export const cardImageUrl = (id: string): string | undefined => manifest.cards[id];
 export const unitImageUrl = (id: string): string | undefined => manifest.units[id];
+export const uiImageUrl = (id: string): string | undefined => manifest.ui[id];
 export const towerImageUrl = (type: string): string | undefined =>
   type === 'king' ? manifest.towers.king : manifest.towers.princess;
 export const bossImageUrl = (): string | undefined => manifest.boss.boss ?? Object.values(manifest.boss)[0];
