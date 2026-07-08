@@ -23,7 +23,13 @@ import { haptic } from './telegram';
 import { t, reasonText, cardName } from './i18n';
 import { cardImageUrl, uiImageUrl } from './assets';
 
-export async function startBattle(nav: Nav): Promise<void> {
+/** How a battle is entered: ranked matchmaking, or a friendly room (host/guest). */
+export type BattleStart =
+  | { kind: 'ranked' }
+  | { kind: 'friendly-host' }
+  | { kind: 'friendly-guest'; code: string };
+
+export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked' }): Promise<void> {
   let field: GameField | null = null;
   let hand: HandUI | null = null;
   let trio: TrioUI | null = null;
@@ -54,16 +60,57 @@ export async function startBattle(nav: Nav): Promise<void> {
   setGameVisible(false);
   const searching = document.createElement('div');
   searching.className = 'screen';
-  searching.innerHTML = `
-    <h1>${t('battle.finding')}</h1>
-    <div class="card"><div class="muted">${t('battle.findingHint')}</div></div>
-    <button id="cancel" class="secondary">${t('common.cancel')}</button>`;
-  setUI(searching);
-  searching.querySelector<HTMLButtonElement>('#cancel')!.onclick = () => {
-    socket.send({ t: 'cancelQueue' });
+  const friendly = opts.kind !== 'ranked';
+
+  function leaveSearch() {
+    if (opts.kind === 'ranked') socket.send({ t: 'cancelQueue' });
+    else if (opts.kind === 'friendly-host') socket.send({ t: 'cancelFriendly' });
     cleanup();
     nav.toMenu();
-  };
+  }
+
+  function shareFriendlyCode(code: string) {
+    const text = t('friendly.shareText', { code });
+    // Telegram share if inside the Mini App; otherwise copy to clipboard.
+    const tg = (window as unknown as { Telegram?: { WebApp?: { openTelegramLink?: (u: string) => void } } }).Telegram?.WebApp;
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(text)}`);
+    } else {
+      navigator.clipboard?.writeText(text).catch(() => {});
+    }
+    haptic('light');
+  }
+
+  /** Paint the pre-match screen: finding an opponent, or a friendly room's code. */
+  function paintSearching(code?: string, errorMsg?: string) {
+    let body: string;
+    if (errorMsg) {
+      body = `<div class="card"><div class="error">${escapeHtml(errorMsg)}</div></div>`;
+    } else if (opts.kind === 'friendly-host') {
+      body = code
+        ? `<div class="card col" style="align-items:center;gap:10px">
+             <div class="muted">${t('friendly.shareHint')}</div>
+             <div class="friendly-code">${escapeHtml(code)}</div>
+             <button id="share" class="secondary">${t('friendly.copy')}</button>
+             <div class="muted">${t('friendly.waiting')}</div>
+           </div>`
+        : `<div class="card"><div class="muted">${t('friendly.creating')}</div></div>`;
+    } else if (opts.kind === 'friendly-guest') {
+      body = `<div class="card"><div class="muted">${t('friendly.joining', { code: opts.code })}</div></div>`;
+    } else {
+      body = `<div class="card"><div class="muted">${t('battle.findingHint')}</div></div>`;
+    }
+    searching.innerHTML = `
+      <h1>${friendly ? t('friendly.title') : t('battle.finding')}</h1>
+      ${body}
+      <button id="cancel" class="secondary">${errorMsg ? t('common.back') : t('common.cancel')}</button>`;
+    searching.querySelector<HTMLButtonElement>('#cancel')!.onclick = leaveSearch;
+    const shareBtn = searching.querySelector<HTMLButtonElement>('#share');
+    if (shareBtn && code) shareBtn.onclick = () => shareFriendlyCode(code);
+  }
+
+  paintSearching();
+  setUI(searching);
 
   function cleanup() {
     off?.();
@@ -279,15 +326,19 @@ export async function startBattle(nav: Nav): Promise<void> {
       chestBlock = `<div class="card col" style="align-items:center"><div class="muted">${t('result.chestFull')}</div></div>`;
     }
 
+    // Friendly matches are pure practice — no ladder or economy lines.
+    const economy = friendly
+      ? `<div class="muted">${t('friendly.noRewards')}</div>`
+      : `<div>${t('battle.trophies', { delta: (result.trophyDelta >= 0 ? '+' : '') + result.trophyDelta })}</div>
+         <div class="row" style="gap:8px"><span class="badge">🪙 +${result.rewards.gold}</span></div>`;
     node.innerHTML = `
       <h1>${win ? t('battle.victory') : t('battle.defeat')}</h1>
       <div class="card col" style="align-items:center">
         <div style="font-size:26px; letter-spacing:6px">${crowns(result.yourScore)} <span class="muted" style="font-size:14px">vs</span> ${crowns(result.opponentScore)}</div>
         <div class="muted">${t('battle.reason', { reason: reasonText(result.reason) })}</div>
-        <div>${t('battle.trophies', { delta: (result.trophyDelta >= 0 ? '+' : '') + result.trophyDelta })}</div>
-        <div class="row" style="gap:8px"><span class="badge">🪙 +${result.rewards.gold}</span></div>
+        ${economy}
       </div>
-      ${chestBlock}
+      ${friendly ? '' : chestBlock}
       <button id="ok" class="accent">${t('battle.backToMenu')}</button>`;
     setUI(node);
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toMenu();
@@ -327,12 +378,19 @@ export async function startBattle(nav: Nav): Promise<void> {
         hand?.clearSelection();
         haptic('light');
       }, arenaId);
+    } else if (msg.t === 'friendlyCreated') {
+      paintSearching(msg.code);
     } else if (msg.t === 'battle' && root) {
       onSnapshot(root, msg.snapshot);
     } else if (msg.t === 'matchEnd') {
       showResult(msg.result);
+    } else if (msg.t === 'error' && !inMatch) {
+      // A friendly-room error (not found / expired) — surface it on the search screen.
+      paintSearching(undefined, msg.error);
     }
   });
 
-  socket.send({ t: 'queue' });
+  if (opts.kind === 'friendly-host') socket.send({ t: 'createFriendly' });
+  else if (opts.kind === 'friendly-guest') socket.send({ t: 'joinFriendly', code: opts.code });
+  else socket.send({ t: 'queue' });
 }

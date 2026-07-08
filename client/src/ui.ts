@@ -34,6 +34,9 @@ export interface Nav {
   toTrio(): void;
   toDaily(): void;
   toLeaderboard(): void;
+  toFriendly(): void;
+  toFriendlyHost(): void;
+  toFriendlyGuest(code: string): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -212,6 +215,7 @@ export function renderMenu(nav: Nav): void {
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
+    <button id="friendly" class="secondary">${t('menu.friendly')}</button>
     <div class="row">
       <button id="daily" class="secondary grow">${t('menu.daily')}${p.daily && hasDailyRewards(p.daily) ? ' <span class="claim-dot"></span>' : ''}</button>
       <button id="leaderboard" class="secondary grow">${t('menu.leaderboard')}</button>
@@ -258,6 +262,7 @@ export function renderMenu(nav: Nav): void {
   }
 
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
+  node.querySelector<HTMLButtonElement>('#friendly')!.onclick = () => { haptic('light'); nav.toFriendly(); };
   node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
   node.querySelector<HTMLButtonElement>('#leaderboard')!.onclick = () => { haptic('light'); nav.toLeaderboard(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
@@ -546,6 +551,39 @@ export async function renderLeaderboard(nav: Nav): Promise<void> {
   tabP.onclick = () => { haptic('light'); void showPlayers(); };
   tabC.onclick = () => { haptic('light'); void showClans(); };
   void showPlayers();
+}
+
+// --- Friendly battles: host a room (share a code) or join by code ---
+
+export function renderFriendly(nav: Nav): void {
+  setGameVisible(false);
+  const node = div('screen');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('menu.friendly')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div class="muted">${t('friendly.intro')}</div>
+    <button id="host" class="accent big-battle">${t('friendly.create')}</button>
+    <div class="card col">
+      <div class="muted">${t('friendly.joinTitle')}</div>
+      <input id="code" type="text" maxlength="4" autocomplete="off" autocapitalize="characters"
+             placeholder="${t('friendly.codePlaceholder')}" style="text-transform:uppercase;letter-spacing:6px;text-align:center;font-weight:900">
+      <button id="join" class="secondary">${t('friendly.join')}</button>
+      <div class="error" id="err"></div>
+    </div>`;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+  node.querySelector<HTMLButtonElement>('#host')!.onclick = () => { haptic('light'); nav.toFriendlyHost(); };
+
+  const input = node.querySelector<HTMLInputElement>('#code')!;
+  const err = node.querySelector<HTMLDivElement>('#err')!;
+  node.querySelector<HTMLButtonElement>('#join')!.onclick = () => {
+    const code = input.value.trim().toUpperCase();
+    if (code.length < 4) { err.textContent = t('friendly.badCode'); return; }
+    haptic('light');
+    nav.toFriendlyGuest(code);
+  };
 }
 
 // --- Battle trio picker: choose exactly TRIO_SIZE cards from the collection ---

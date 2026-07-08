@@ -66,6 +66,15 @@ export function attachWebSocket(server: Server): void {
         case 'leaveMatch':
           gameManager.leaveMatch(userId);
           break;
+        case 'createFriendly':
+          gameManager.createFriendly(userId, send);
+          break;
+        case 'joinFriendly':
+          gameManager.joinFriendly(userId, msg.code, send);
+          break;
+        case 'cancelFriendly':
+          gameManager.cancelFriendly(userId);
+          break;
         case 'bossJoin':
           gameManager.bossJoin(userId, msg.clanId, send);
           break;

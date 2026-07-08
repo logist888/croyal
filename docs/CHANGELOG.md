@@ -3,6 +3,25 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-18 — Friendly battles (Этап 2 — social & competitive)
+First social feature: play a friend directly, outside the ladder.
+- **Friendly (unranked) rooms** over WebSocket (`protocol.ts`,
+  `createFriendly`/`joinFriendly`/`cancelFriendly` + `friendlyCreated`): a host
+  opens a private room and gets a 4-char code (safe alphabet, no O/0/I/1); a
+  guest joins by code (case-insensitive) and both are paired into the normal
+  match engine. Rooms live 5 min, then expire and free the code; a socket drop
+  closes a still-waiting room.
+- **No ladder/economy side-effects**: `Match` gained a `friendly` flag — friendly
+  results skip trophies, gold, chest, and daily-quest progress entirely
+  (pure practice). `matchFound` carries `friendly` so the client hides the
+  reward block and shows a "no rewards" note.
+- **Client**: new "🤝 Friendly battle" hub screen — create a room (big shareable
+  code + copy/Telegram-share) or join by code. `startBattle` refactored to take a
+  `BattleStart` (ranked | friendly-host | friendly-guest); the pre-match screen
+  shows the code / "waiting" / join state and surfaces room errors. EN+RU i18n.
+- Tests 171 → **178** (`friendly.test.ts`: code pairing, bad/own code, TTL
+  expiry, idempotent re-host, and friendly-vs-ranked trophy effect).
+
 ## build-17 — Classic open-field battle (the new default core)
 Reworked the battle deployment to the classic Clash-Royale flow, keeping the
 card-cooldown economy (no rollback to the elixir core).

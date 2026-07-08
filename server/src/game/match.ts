@@ -38,6 +38,8 @@ export class Match {
     private store: Store,
     private onEnd: (match: Match) => void,
     config: BattleConfig = ACTIVE_BATTLE_CONFIG,
+    /** Friendly (unranked) match: no trophies, gold, chest, or quest progress. */
+    private friendly = false,
   ) {
     const seed = hashSeed(id);
     this.sim = new Simulation(seatA.deck, seatB.deck, seed, this.levelsFor(seatA), this.levelsFor(seatB), config);
@@ -162,7 +164,7 @@ export class Match {
       const seat = seatFor(side);
       if (!seat.userId) continue;
       const isWinner = side === winner;
-      const delta = isWinner ? WIN_TROPHIES : -LOSS_TROPHIES;
+      const delta = this.friendly ? 0 : (isWinner ? WIN_TROPHIES : -LOSS_TROPHIES);
       const { rewards, earnedChest } = this.persist(seat.userId, isWinner, delta);
       const result: MatchResult = {
         outcome: isWinner ? 'win' : 'loss',
@@ -185,6 +187,8 @@ export class Match {
   private persist(userId: string, isWinner: boolean, delta: number): { rewards: BattleRewards; earnedChest: ChestRarity | null } {
     const user = this.store.getUser(userId);
     if (!user) return { rewards: { gold: 0, cards: {} }, earnedChest: null };
+    // Friendly matches are pure practice: no ladder, economy, or quest effects.
+    if (this.friendly) return { rewards: { gold: 0, cards: {} }, earnedChest: null };
     const goldGain = isWinner ? 50 : 10;
     this.store.updateUser(userId, {
       trophies: Math.max(0, user.trophies + delta),

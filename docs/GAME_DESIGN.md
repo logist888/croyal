@@ -160,6 +160,17 @@ formula with original units and no Supercell assets.
 - **Recommended pairs** (`shared/src/pairs.ts`) are static combo hints surfaced
   as badges in the trio picker and during onboarding.
 
+## Friendly battles (unranked)
+A host opens a **private room** and receives a **4-character code** (safe
+alphabet — no `O/0`, `I/1`) to share; a guest joins by that code and both are
+paired into the normal match engine. Friendly matches are **pure practice**:
+no trophies, gold, chest, or daily-quest progress (`Match`'s `friendly` flag;
+`matchFound.friendly` tells the client to hide the reward block). Rooms live
+**5 minutes**, then expire and free the code; a host disconnect closes a
+still-waiting room. All over WebSocket (`createFriendly`/`joinFriendly`/
+`cancelFriendly` → `friendlyCreated`). A Telegram deep-link invite is a future
+add-on; today the code (with copy/share) is the invite.
+
 ## Clan boss raid (co-op)
 See [CLANS.md](CLANS.md). Clanmates fight a shared boss; **2+ simultaneous raiders
 double** the boss HP and damage. Raiders play on card cooldowns stretched **×1.5**.

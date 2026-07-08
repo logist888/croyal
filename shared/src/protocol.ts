@@ -13,6 +13,10 @@ export type ClientMessage =
   // aimed spells; omitted for fixed-lane troops (the server picks the lane spawn).
   | { t: 'deploy'; cardId: string; x?: number; y?: number }
   | { t: 'leaveMatch' }
+  // Friendly (unranked) 1v1 by private room code — no trophies/rewards.
+  | { t: 'createFriendly' } // host: open a room, receive a code
+  | { t: 'joinFriendly'; code: string } // guest: join by code
+  | { t: 'cancelFriendly' } // host: close the room while still waiting
   | { t: 'bossJoin'; clanId: string }
   | { t: 'bossDeploy'; cardId: string; x?: number; y?: number }
   | { t: 'bossLeave' }
@@ -23,7 +27,8 @@ export type ServerMessage =
   | { t: 'authOk'; userId: string; nickname: string }
   | { t: 'authError'; error: string }
   | { t: 'queued' }
-  | { t: 'matchFound'; matchId: string; opponent: string }
+  | { t: 'friendlyCreated'; code: string } // your room code — share it with a friend
+  | { t: 'matchFound'; matchId: string; opponent: string; friendly?: boolean }
   | { t: 'battle'; snapshot: BattleSnapshot }
   | { t: 'matchEnd'; result: MatchResult }
   | { t: 'boss'; snapshot: BossSnapshot }

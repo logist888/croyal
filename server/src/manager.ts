@@ -13,6 +13,11 @@ import { store } from './store';
 const BOT_FALLBACK_MS = 6000;
 /** How long a match survives a socket drop before the absent player forfeits. */
 const RECONNECT_GRACE_MS = 30000;
+/** A friendly room waits this long for a guest before it expires. */
+const FRIENDLY_ROOM_TTL_MS = 5 * 60 * 1000;
+/** Room-code alphabet — no easily-confused chars (O/0, I/1). */
+const FRIENDLY_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const FRIENDLY_CODE_LEN = 4;
 
 interface Waiting {
   userId: string;
@@ -27,6 +32,9 @@ export class GameManager {
   private userBoss = new Map<string, string>(); // userId -> clanId
   private waiting: Waiting | null = null;
   private graceTimers = new Map<string, ReturnType<typeof setTimeout>>(); // userId -> forfeit timer
+  // Friendly (unranked) rooms: a host opens one and shares the code; a guest joins by it.
+  private friendlyRooms = new Map<string, { hostId: string; send: Sender; timer: ReturnType<typeof setTimeout> }>(); // code -> room
+  private userFriendly = new Map<string, string>(); // hostId -> code
 
   // --- 1v1 matchmaking ---
   queue(userId: string, send: Sender): void {
@@ -58,6 +66,86 @@ export class GameManager {
     }
   }
 
+  // --- Friendly (unranked) rooms ---
+
+  /** Host a friendly room and hand back a shareable code. */
+  createFriendly(userId: string, send: Sender): void {
+    if (this.userMatch.has(userId)) {
+      send({ t: 'error', error: 'already in a match' });
+      return;
+    }
+    this.cancelQueue(userId); // can't wait in ranked and host at once
+    const existing = this.userFriendly.get(userId);
+    if (existing) {
+      send({ t: 'friendlyCreated', code: existing }); // re-open the same room
+      return;
+    }
+    const code = this.newFriendlyCode();
+    const timer = setTimeout(() => this.expireFriendly(code), FRIENDLY_ROOM_TTL_MS);
+    this.friendlyRooms.set(code, { hostId: userId, send, timer });
+    this.userFriendly.set(userId, code);
+    send({ t: 'friendlyCreated', code });
+  }
+
+  /** Join a friendly room by its code, pairing host + guest into an unranked match. */
+  joinFriendly(userId: string, rawCode: string, send: Sender): void {
+    if (this.userMatch.has(userId)) return;
+    const code = String(rawCode ?? '').trim().toUpperCase();
+    const room = this.friendlyRooms.get(code);
+    if (!room) {
+      send({ t: 'error', error: 'friendly room not found' });
+      return;
+    }
+    if (room.hostId === userId) {
+      send({ t: 'error', error: 'cannot join your own room' });
+      return;
+    }
+    const host = store.getUser(room.hostId);
+    const guest = store.getUser(userId);
+    if (!host || !guest) {
+      send({ t: 'error', error: 'player unavailable' });
+      return;
+    }
+    clearTimeout(room.timer);
+    this.friendlyRooms.delete(code);
+    this.userFriendly.delete(room.hostId);
+    this.cancelQueue(userId);
+    this.createMatch(
+      { userId: room.hostId, deck: battleDeckOf(host), send: room.send },
+      { userId, deck: battleDeckOf(guest), send },
+      true,
+    );
+  }
+
+  /** Host closes a still-waiting room. */
+  cancelFriendly(userId: string): void {
+    const code = this.userFriendly.get(userId);
+    if (!code) return;
+    const room = this.friendlyRooms.get(code);
+    if (room) clearTimeout(room.timer);
+    this.friendlyRooms.delete(code);
+    this.userFriendly.delete(userId);
+  }
+
+  private expireFriendly(code: string): void {
+    const room = this.friendlyRooms.get(code);
+    if (!room) return;
+    this.friendlyRooms.delete(code);
+    this.userFriendly.delete(room.hostId);
+    room.send({ t: 'error', error: 'friendly room expired' });
+  }
+
+  private newFriendlyCode(): string {
+    let code = '';
+    do {
+      code = '';
+      for (let i = 0; i < FRIENDLY_CODE_LEN; i++) {
+        code += FRIENDLY_CODE_ALPHABET[Math.floor(Math.random() * FRIENDLY_CODE_ALPHABET.length)];
+      }
+    } while (this.friendlyRooms.has(code));
+    return code;
+  }
+
   private matchWithBot(userId: string): void {
     if (this.waiting?.userId !== userId) return;
     const human = this.waiting;
@@ -70,18 +158,18 @@ export class GameManager {
     );
   }
 
-  private createMatch(seatA: MatchSeat, seatB: MatchSeat): void {
+  private createMatch(seatA: MatchSeat, seatB: MatchSeat, friendly = false): void {
     const matchId = randomUUID();
     const nameOf = (s: MatchSeat) => (s.userId ? store.getUser(s.userId)?.nickname ?? 'Player' : 'Bot');
     if (seatA.userId) {
       this.userMatch.set(seatA.userId, matchId);
-      seatA.send({ t: 'matchFound', matchId, opponent: nameOf(seatB) });
+      seatA.send({ t: 'matchFound', matchId, opponent: nameOf(seatB), friendly });
     }
     if (seatB.userId) {
       this.userMatch.set(seatB.userId, matchId);
-      seatB.send({ t: 'matchFound', matchId, opponent: nameOf(seatA) });
+      seatB.send({ t: 'matchFound', matchId, opponent: nameOf(seatA), friendly });
     }
-    const match = new Match(matchId, seatA, seatB, store, (m) => this.onMatchEnd(m, seatA, seatB));
+    const match = new Match(matchId, seatA, seatB, store, (m) => this.onMatchEnd(m, seatA, seatB), ACTIVE_BATTLE_CONFIG, friendly);
     this.matches.set(matchId, match);
     match.start();
   }
@@ -187,6 +275,7 @@ export class GameManager {
    */
   disconnect(userId: string): void {
     this.cancelQueue(userId);
+    this.cancelFriendly(userId);
     this.bossLeave(userId);
     const matchId = this.userMatch.get(userId);
     if (matchId && this.matches.get(matchId)?.hasUser(userId)) {
