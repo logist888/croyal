@@ -46,6 +46,7 @@ export const api = {
   claimDaily: () => req<{ profile: PlayerProfile }>('/api/daily/claim', { method: 'POST' }),
   claimQuest: (id: string) =>
     req<{ profile: PlayerProfile }>(`/api/daily/quests/${id}/claim`, { method: 'POST' }),
+  claimSeason: () => req<{ profile: PlayerProfile }>('/api/season/claim', { method: 'POST' }),
   leaderboardPlayers: () =>
     req<{ top: LeaderboardPlayer[]; you: LeaderboardPlayer | null }>('/api/leaderboard/players'),
   leaderboardClans: () => req<{ top: LeaderboardClan[] }>('/api/leaderboard/clans'),

@@ -12,9 +12,10 @@ import {
   CHEST_SLOTS, CHEST_DEFS, chestState, gemsToSkip, hasUnlockingChest,
   rollChestRewards, unlockedCards,
   dayIndex, freshDailyState, loginReward, questClaimable,
+  seasonIndex, softResetTrophies, seasonRewardFor,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
   type ChestRarity, type BattleRewards, type DailyState, type QuestType,
-  type LeaderboardPlayer, type LeaderboardClan,
+  type LeaderboardPlayer, type LeaderboardClan, type SeasonState,
 } from '@croyal/shared';
 import { Db } from './db';
 
@@ -100,6 +101,7 @@ export class Store {
       cards,
       chests: [],
       daily: null,
+      season: null,
       clanId: null,
       createdAt: Date.now(),
     };
@@ -319,6 +321,57 @@ export class Store {
     user.gold += quest.rewardGold;
     user.gems += quest.rewardGems;
     quest.claimed = true;
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  // --- Monthly seasons & ladder soft-reset (see shared/seasons.ts) ---
+
+  /**
+   * Refresh a user's season state for the current UTC month. On the first read
+   * it initialises to the live month with peak = current trophies. When a new
+   * month has begun it closes the old season: bank an end-of-season reward sized
+   * by the peak league, soft-reset trophies, and start the new month with peak
+   * seeded at the post-reset value. Idempotent within a month. Timestamp-based —
+   * detected lazily on read/action, no scheduled job.
+   */
+  ensureSeason(userId: string, now = Date.now()): SeasonState | null {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    const current = seasonIndex(now);
+    if (!user.season) {
+      user.season = { index: current, peakTrophies: user.trophies, pendingReward: null };
+      this.db?.upsertUser(user);
+      return user.season;
+    }
+    const s = user.season;
+    if (s.index !== current) {
+      // Close the season the player was last seen in (not necessarily current-1;
+      // a dormant account may skip months — reward the last one it actually played).
+      const reward = seasonRewardFor(s.index, s.peakTrophies);
+      user.trophies = softResetTrophies(user.trophies);
+      s.index = current;
+      s.peakTrophies = user.trophies;
+      // A player may miss several claims; the newest pending reward wins (older
+      // uncollected seasons are folded into it — kept simple by design).
+      s.pendingReward = reward;
+      this.db?.upsertUser(user);
+    } else if (user.trophies > s.peakTrophies) {
+      s.peakTrophies = user.trophies;
+      this.db?.upsertUser(user);
+    }
+    return user.season;
+  }
+
+  /** Claim the banked end-of-season reward, if any. */
+  claimSeasonReward(userId: string, now = Date.now()): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const season = this.ensureSeason(userId, now)!;
+    if (!season.pendingReward) throw new Error('No season reward to claim');
+    user.gold += season.pendingReward.gold;
+    user.gems += season.pendingReward.gems;
+    season.pendingReward = null;
     this.db?.upsertUser(user);
     return user;
   }

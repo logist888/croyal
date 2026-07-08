@@ -60,6 +60,8 @@ export function createApp() {
     }
     const existing = store.getUserByTelegram(auth.user.id);
     if (existing) {
+      store.ensureDaily(existing.id); // roll a new day's quests/streak on login
+      store.ensureSeason(existing.id); // roll over the season / bank an end-of-season reward
       const token = store.createSession(existing.id);
       res.json({ registered: true, token, profile: publicProfile(existing), mode: battleMode() });
       return;
@@ -92,6 +94,7 @@ export function createApp() {
 
   app.get('/api/me', requireAuth, (req: AuthedRequest, res: Response) => {
     store.ensureDaily(req.userId!); // roll a new day's quests/streak on login
+    store.ensureSeason(req.userId!); // roll over the season / bank an end-of-season reward
     const user = store.getUser(req.userId!);
     res.json({ profile: user ? publicProfile(user) : null, mode: battleMode() });
   });
@@ -110,6 +113,16 @@ export function createApp() {
   app.post('/api/daily/quests/:id/claim', requireAuth, (req: AuthedRequest, res: Response) => {
     try {
       const profile = store.claimQuest(req.userId!, req.params.id);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Season: claim the banked end-of-season reward ---
+  app.post('/api/season/claim', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.claimSeasonReward(req.userId!);
       res.json({ profile: publicProfile(profile) });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });

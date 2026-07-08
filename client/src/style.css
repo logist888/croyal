@@ -477,6 +477,10 @@ input[type="text"]::placeholder { color: #9b8763; }
 .quest-item { padding: 12px; gap: 6px; }
 .quest-claim { padding: 6px 14px; font-size: 13px; }
 
+/* ===== Seasons ===== */
+.season-line { margin-top: 4px; font-size: 12px; }
+.season-league { font-size: 20px; font-weight: 900; color: var(--gold-1); text-shadow: 0 0 10px rgba(255,216,102,0.5); }
+
 /* ===== Leaderboard ===== */
 .lb-tabs button.active { outline: 3px solid var(--gold-1); outline-offset: 1px; }
 .lb-row { align-items: center; }

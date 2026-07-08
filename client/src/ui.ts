@@ -9,7 +9,8 @@ import {
   pairFor, isCardUnlocked, unlockLeagueIndex,
   CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
   hasDailyRewards, loginReward, questClaimable, DAILY_REWARDS,
-  type ChestSlot, type DailyState, type DailyQuest,
+  seasonRemainingMs, leagueName as seasonLeagueName,
+  type ChestSlot, type DailyState, type DailyQuest, type SeasonReward,
 } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
@@ -207,6 +208,7 @@ export function renderMenu(nav: Nav): void {
       <div class="muted">${nextMin !== null
         ? t('menu.toNext', { n: Math.max(0, nextMin - p.trophies), name: nextName })
         : t('menu.topLeague')}</div>
+      <div class="muted season-line">🗓 ${t('season.endsIn', { time: fmtSeasonTime(seasonRemainingMs(Date.now())) })}</div>
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
@@ -261,6 +263,51 @@ export function renderMenu(nav: Nav): void {
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
   node.querySelector<HTMLButtonElement>('#clans')!.onclick = () => { haptic('light'); nav.toClans(); };
   node.querySelector<HTMLButtonElement>('#edit-trio')?.addEventListener('click', () => { haptic('light'); nav.toTrio(); });
+
+  // A season rolled over while the player was away — greet them with the reward.
+  if (p.season?.pendingReward) showSeasonReward(p.season.pendingReward, nav);
+}
+
+// --- Seasons: end-of-season reward claim ---
+
+/** Compact season countdown: "12д 4ч" / "4ч 20м" / "20м". */
+function fmtSeasonTime(ms: number): string {
+  const totalMin = Math.max(0, Math.ceil(ms / 60000));
+  const d = Math.floor(totalMin / 1440), h = Math.floor((totalMin % 1440) / 60), m = totalMin % 60;
+  if (d > 0) return `${d}${t('season.d')} ${h}${t('season.h')}`;
+  if (h > 0) return `${h}${t('season.h')} ${String(m).padStart(2, '0')}${t('season.m')}`;
+  return `${m}${t('season.m')}`;
+}
+
+/** Modal shown once per rollover: peak league reached + reward, with a claim button. */
+function showSeasonReward(reward: SeasonReward, nav: Nav): void {
+  const lang = getLang();
+  const overlay = div('modal-overlay');
+  overlay.innerHTML = `
+    <div class="modal card col" style="align-items:center">
+      <h2>🗓 ${t('season.over')}</h2>
+      <div class="season-league">🏟 ${escapeHtml(seasonLeagueName(reward.league, lang === 'ru'))}</div>
+      <div class="muted">${t('season.reached')}</div>
+      <div class="row" style="gap:10px;margin:6px 0">
+        ${reward.gold ? `<span class="badge">🪙 ${reward.gold}</span>` : ''}
+        ${reward.gems ? `<span class="badge">💎 ${reward.gems}</span>` : ''}
+      </div>
+      <button id="claim-season" class="accent">${t('season.claim')}</button>`;
+  document.getElementById('ui')!.appendChild(overlay);
+  const btn = overlay.querySelector<HTMLButtonElement>('#claim-season')!;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      state.profile = (await api.claimSeason()).profile;
+      haptic('success');
+      overlay.remove();
+      renderMenu(nav); // repaint currencies with the reward folded in
+    } catch (e) {
+      btn.disabled = false;
+      haptic('error');
+      alert((e as Error).message);
+    }
+  };
 }
 
 // --- Chests: hub slot bar (unlock timers + open) ---

@@ -20,6 +20,12 @@ Post-launch work: real art, live infra, and the first retention loop.
   joined) with the caller's own rank, and top clans by summed LIVE member
   trophies. New "🏆 Ranking" hub screen with players/clans tabs and a
   self-highlight row.
+- **Monthly seasons + ladder soft-reset** (`shared/seasons.ts`): a season is one
+  UTC month. The store tracks the trophy peak and, on the first read/action of a
+  new month, soft-resets trophies (kept up to 600, then half the excess) and
+  banks an end-of-season reward sized by the peak league. Timestamp-based (DB
+  `season` JSONB, no scheduled job). The hub shows a season countdown; a reward
+  modal greets the player after a rollover (`POST /api/season/claim`).
 - **Reconnect to an in-progress battle** — a dropped socket holds the match open
   for a 30s grace window and resyncs on re-auth instead of auto-forfeiting;
   client auto-reconnects with backoff and shows a "reconnecting" veil.
@@ -29,7 +35,8 @@ Post-launch work: real art, live infra, and the first retention loop.
 - **Launch infra**: single-origin Render hosting (server serves the client),
   optional keep-warm ping, verified Telegram auth default, Neon Postgres
   persistence verified end-to-end.
-- Tests 119 → **140** (chests, reconnect grace, arena mapping).
+- Tests 119 → **163** (chests, daily, leaderboards, reconnect grace, arena
+  mapping, seasons).
 
 ## build-15 — Content expansion: 80 cards, statuses, league unlocks, art pipeline
 The full content layer on top of the build-14 battle core. Four milestones.

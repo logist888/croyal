@@ -47,10 +47,19 @@
 - **Leaderboards** (build-16) — global top players by trophies (with your own
   rank) and top clans by summed live member trophies, on the "🏆 Ranking" screen.
 
+- **Monthly seasons + ladder soft-reset** (build-16, `shared/seasons.ts`) — a
+  season is one UTC calendar month. The store tracks the trophy **peak** reached
+  in the season and, on the first read/action of a new month, closes the old one:
+  trophies **soft-reset** (kept up to `SEASON_RESET_FLOOR` = 600, then half the
+  excess carries over) and an **end-of-season reward** sized by the peak league
+  is banked as a pending claim. Timestamp-based (no scheduled job): the rollover
+  is detected lazily. The hub shows a season countdown; a reward modal greets the
+  player on the first login after a rollover (`POST /api/season/claim`).
+
 ## Planned (next phases)
-- **Seasons / ladder resets** (Этап 1 of docs/ROADMAP.ru.md).
+- **Push notifications** (Этап 1.5 of docs/ROADMAP.ru.md — deferred until the
+  dev-auth hole is closed).
 - **Clan progression** — clan trophies, clan boss tiers, weekly resets.
-- **Seasons & ladder resets.**
 - **Gem sources/sinks** (cosmetics, chest skips).
 
 Tuning for all of the above belongs in `shared/src/constants.ts` (thresholds,

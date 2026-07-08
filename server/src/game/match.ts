@@ -192,6 +192,8 @@ export class Match {
       losses: user.losses + (isWinner ? 0 : 1),
       gold: user.gold + goldGain,
     });
+    // Track the season peak (and lazily roll over a new UTC month) off the fresh trophy total.
+    this.store.ensureSeason(userId);
     // A win earns a chest (rarity weighted); forfeited if all 4 slots are full.
     const earnedChest = isWinner
       ? this.store.awardChest(userId, randomChestRarity(Math.random))
