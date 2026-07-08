@@ -10,6 +10,7 @@ import {
 import { Simulation } from './simulation';
 import { ACTIVE_BATTLE_CONFIG } from './active-config';
 import { pickBotAction, botNextDelay } from './bot';
+import type { MatchRecording, ReplayAction } from './replay';
 import type { Store } from '../store';
 
 export type Sender = (msg: ServerMessage) => void;
@@ -30,6 +31,12 @@ export class Match {
   private ended = false;
   private botSide: Side | null = null;
   private botCooldown = 0;
+  // Replay recording: every successful deploy, stamped with the sim tick it hit.
+  private readonly seed: number;
+  private readonly levelsA: Record<string, number>;
+  private readonly levelsB: Record<string, number>;
+  private readonly config: BattleConfig;
+  private actions: ReplayAction[] = [];
 
   constructor(
     public readonly id: string,
@@ -41,10 +48,41 @@ export class Match {
     /** Friendly (unranked) match: no trophies, gold, chest, or quest progress. */
     private friendly = false,
   ) {
-    const seed = hashSeed(id);
-    this.sim = new Simulation(seatA.deck, seatB.deck, seed, this.levelsFor(seatA), this.levelsFor(seatB), config);
+    this.seed = hashSeed(id);
+    this.config = config;
+    this.levelsA = this.levelsFor(seatA);
+    this.levelsB = this.levelsFor(seatB);
+    this.sim = new Simulation(seatA.deck, seatB.deck, this.seed, this.levelsA, this.levelsB, config);
     if (seatA.userId === null) this.botSide = 'A';
     if (seatB.userId === null) this.botSide = 'B';
+  }
+
+  /** Deploy into the sim and, if accepted, record it (stamped with the sim tick) for replay. */
+  private deployAndRecord(side: Side, cardId: string, x?: number, y?: number): void {
+    const r = this.sim.deploy(side, cardId, x, y);
+    if (r.ok) this.actions.push({ tick: this.sim.tick, side, cardId, x, y });
+  }
+
+  /** The self-contained recording needed to deterministically replay this match. */
+  getRecording(): MatchRecording {
+    const snap = this.sim.getSnapshot('A');
+    const nameOf = (s: MatchSeat) => (s.userId ? this.store.getUser(s.userId)?.nickname ?? 'Player' : 'Bot');
+    return {
+      seed: this.seed,
+      deckA: [...this.seatA.deck],
+      deckB: [...this.seatB.deck],
+      levelsA: this.levelsA,
+      levelsB: this.levelsB,
+      config: this.config,
+      actions: this.actions,
+      userA: this.seatA.userId,
+      userB: this.seatB.userId,
+      nameA: nameOf(this.seatA),
+      nameB: nameOf(this.seatB),
+      winner: this.sim.winnerSide,
+      scoreA: snap.score.A,
+      scoreB: snap.score.B,
+    };
   }
 
   /** Card levels for a seat's deck (bots / unknown -> level 1). */
@@ -86,7 +124,7 @@ export class Match {
     if (this.ended) return;
     const side = this.sideOf(userId);
     if (!side) return;
-    this.sim.deploy(side, cardId, x, y);
+    this.deployAndRecord(side, cardId, x, y);
   }
 
   handleLeave(userId: string): void {
@@ -133,12 +171,12 @@ export class Match {
 
     if (this.sim.battleConfig.economy === 'cooldown') {
       // Paced play attempts (prototype rhythm) whether or not a card was ready.
-      if (action) this.sim.deploy(side, action.cardId, action.x, action.y);
+      if (action) this.deployAndRecord(side, action.cardId, action.x, action.y);
       this.botCooldown = botNextDelay(this.sim, this.tickCount);
       return;
     }
     if (!action) return; // elixir mode: retry next tick until something is affordable
-    this.sim.deploy(side, action.cardId, action.x, action.y);
+    this.deployAndRecord(side, action.cardId, action.x, action.y);
     this.botCooldown = 1.5 + (this.tickCount % 3) * 0.5;
   }
 

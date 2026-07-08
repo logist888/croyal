@@ -3,6 +3,24 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-19 — Deterministic replays (Этап 2)
+Watch your last battle back. The simulation has no nondeterminism (the only RNG
+is a seeded shuffle), so a match is fully reproducible.
+- **Recording** (`game/replay.ts`, `MatchRecording`): `Match` now logs every
+  accepted deploy stamped with the sim tick, alongside seed / decks / levels /
+  config / final winner+score. The manager keeps the last 100 recordings and
+  each player's most recent (`lastReplay`).
+- **ReplayRoom**: re-runs a `Simulation` from a recording, applying each action
+  at the exact tick it hit live, and streams the same `battle` snapshots to one
+  viewer at ~2× speed, then a `replayEnd` verdict. Protocol:
+  `watchLastReplay`/`leaveReplay` → `replayStart` + `battle`… + `replayEnd`.
+- **Client** (`replay.ts`): a read-only battle view (arena + timer + score, no
+  hand, "📺 REPLAY" badge). Reachable from the hub ("📺 Replay") and the result
+  screen ("Watch replay"). EN+RU i18n.
+- Tests 178 → **181** (`replay.test.ts`: a recorded action list re-runs to the
+  identical winner/score/tick; manager reports "no replay" with no history and
+  streams `replayStart`→`battle`→`replayEnd` after a match).
+
 ## build-18 — Friendly battles (Этап 2 — social & competitive)
 First social feature: play a friend directly, outside the ladder.
 - **Friendly (unranked) rooms** over WebSocket (`protocol.ts`,

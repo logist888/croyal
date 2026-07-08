@@ -171,6 +171,16 @@ still-waiting room. All over WebSocket (`createFriendly`/`joinFriendly`/
 `cancelFriendly` → `friendlyCreated`). A Telegram deep-link invite is a future
 add-on; today the code (with copy/share) is the invite.
 
+## Replays
+The simulation is **fully deterministic** — no `Math.random` / `Date.now`, only a
+seeded shuffle — so a match is reproducible from a compact recording: seed,
+both decks, card levels, config, and the ordered list of accepted deploys each
+stamped with the sim tick it hit. `Match` records this live; the server keeps the
+last 100 recordings and each player's most recent. A **ReplayRoom** re-runs a
+`Simulation` from the recording, applies every action at its exact tick, and
+streams the same `battle` snapshots to one viewer (read-only, ~2× speed). This is
+also the foundation for future **live spectating** and anti-cheat re-verification.
+
 ## Clan boss raid (co-op)
 See [CLANS.md](CLANS.md). Clanmates fight a shared boss; **2+ simultaneous raiders
 double** the boss HP and damage. Raiders play on card cooldowns stretched **×1.5**.

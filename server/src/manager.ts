@@ -4,8 +4,9 @@
  * these method calls.
  */
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, type PlayerProfile, type ServerMessage } from '@croyal/shared';
+import { DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, type Side, type PlayerProfile, type ServerMessage } from '@croyal/shared';
 import { Match, type MatchSeat, type Sender } from './game/match';
+import { ReplayRoom, type MatchRecording } from './game/replay';
 import { BossRoom } from './game/boss';
 import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { store } from './store';
@@ -15,6 +16,8 @@ const BOT_FALLBACK_MS = 6000;
 const RECONNECT_GRACE_MS = 30000;
 /** A friendly room waits this long for a guest before it expires. */
 const FRIENDLY_ROOM_TTL_MS = 5 * 60 * 1000;
+/** How many recent match recordings to keep for replays (server memory). */
+const REPLAY_CAP = 100;
 /** Room-code alphabet — no easily-confused chars (O/0, I/1). */
 const FRIENDLY_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const FRIENDLY_CODE_LEN = 4;
@@ -35,6 +38,11 @@ export class GameManager {
   // Friendly (unranked) rooms: a host opens one and shares the code; a guest joins by it.
   private friendlyRooms = new Map<string, { hostId: string; send: Sender; timer: ReturnType<typeof setTimeout> }>(); // code -> room
   private userFriendly = new Map<string, string>(); // hostId -> code
+  // Replays: recent match recordings + each user's most recent, and live playbacks.
+  private replays = new Map<string, MatchRecording>(); // matchId -> recording
+  private replayOrder: string[] = []; // insertion order for bounded eviction
+  private lastReplay = new Map<string, string>(); // userId -> matchId
+  private replayRooms = new Map<string, ReplayRoom>(); // viewerId -> active playback
 
   // --- 1v1 matchmaking ---
   queue(userId: string, send: Sender): void {
@@ -175,9 +183,50 @@ export class GameManager {
   }
 
   private onMatchEnd(match: Match, seatA: MatchSeat, seatB: MatchSeat): void {
+    this.storeReplay(match, seatA, seatB);
     this.matches.delete(match.id);
     if (seatA.userId) { this.userMatch.delete(seatA.userId); this.clearGrace(seatA.userId); }
     if (seatB.userId) { this.userMatch.delete(seatB.userId); this.clearGrace(seatB.userId); }
+  }
+
+  /** Keep a bounded history of match recordings; index each human's most recent. */
+  private storeReplay(match: Match, seatA: MatchSeat, seatB: MatchSeat): void {
+    const rec = match.getRecording();
+    this.replays.set(match.id, rec);
+    this.replayOrder.push(match.id);
+    if (seatA.userId) this.lastReplay.set(seatA.userId, match.id);
+    if (seatB.userId) this.lastReplay.set(seatB.userId, match.id);
+    while (this.replayOrder.length > REPLAY_CAP) {
+      const evicted = this.replayOrder.shift()!;
+      this.replays.delete(evicted);
+      // dangling lastReplay entries resolve to "no replay" on lookup — no cleanup needed
+    }
+  }
+
+  // --- Replays (watch your last match) ---
+  watchLastReplay(userId: string, send: Sender): void {
+    if (this.userMatch.has(userId)) {
+      send({ t: 'error', error: 'finish your match first' });
+      return;
+    }
+    const matchId = this.lastReplay.get(userId);
+    const rec = matchId ? this.replays.get(matchId) : undefined;
+    if (!rec) {
+      send({ t: 'error', error: 'no replay available' });
+      return;
+    }
+    this.stopReplay(userId); // one playback per viewer
+    const viewerSide: Side = rec.userA === userId ? 'A' : 'B';
+    const room = new ReplayRoom(rec, viewerSide, send, () => {
+      if (this.replayRooms.get(userId) === room) this.replayRooms.delete(userId);
+    });
+    this.replayRooms.set(userId, room);
+    room.start();
+  }
+
+  stopReplay(userId: string): void {
+    this.replayRooms.get(userId)?.stop();
+    this.replayRooms.delete(userId);
   }
 
   private clearGrace(userId: string): void {
@@ -276,6 +325,7 @@ export class GameManager {
   disconnect(userId: string): void {
     this.cancelQueue(userId);
     this.cancelFriendly(userId);
+    this.stopReplay(userId);
     this.bossLeave(userId);
     const matchId = this.userMatch.get(userId);
     if (matchId && this.matches.get(matchId)?.hasUser(userId)) {

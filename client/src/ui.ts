@@ -37,6 +37,7 @@ export interface Nav {
   toFriendly(): void;
   toFriendlyHost(): void;
   toFriendlyGuest(code: string): void;
+  toReplay(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -215,7 +216,10 @@ export function renderMenu(nav: Nav): void {
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
-    <button id="friendly" class="secondary">${t('menu.friendly')}</button>
+    <div class="row">
+      <button id="friendly" class="secondary grow">${t('menu.friendly')}</button>
+      <button id="replay" class="secondary grow">${t('menu.replay')}</button>
+    </div>
     <div class="row">
       <button id="daily" class="secondary grow">${t('menu.daily')}${p.daily && hasDailyRewards(p.daily) ? ' <span class="claim-dot"></span>' : ''}</button>
       <button id="leaderboard" class="secondary grow">${t('menu.leaderboard')}</button>
@@ -263,6 +267,7 @@ export function renderMenu(nav: Nav): void {
 
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
   node.querySelector<HTMLButtonElement>('#friendly')!.onclick = () => { haptic('light'); nav.toFriendly(); };
+  node.querySelector<HTMLButtonElement>('#replay')!.onclick = () => { haptic('light'); nav.toReplay(); };
   node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
   node.querySelector<HTMLButtonElement>('#leaderboard')!.onclick = () => { haptic('light'); nav.toLeaderboard(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };

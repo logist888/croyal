@@ -75,6 +75,12 @@ export function attachWebSocket(server: Server): void {
         case 'cancelFriendly':
           gameManager.cancelFriendly(userId);
           break;
+        case 'watchLastReplay':
+          gameManager.watchLastReplay(userId, send);
+          break;
+        case 'leaveReplay':
+          gameManager.stopReplay(userId);
+          break;
         case 'bossJoin':
           gameManager.bossJoin(userId, msg.clanId, send);
           break;

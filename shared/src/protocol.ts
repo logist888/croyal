@@ -17,6 +17,8 @@ export type ClientMessage =
   | { t: 'createFriendly' } // host: open a room, receive a code
   | { t: 'joinFriendly'; code: string } // guest: join by code
   | { t: 'cancelFriendly' } // host: close the room while still waiting
+  | { t: 'watchLastReplay' } // re-watch your most recent match (deterministic replay)
+  | { t: 'leaveReplay' } // stop watching a replay
   | { t: 'bossJoin'; clanId: string }
   | { t: 'bossDeploy'; cardId: string; x?: number; y?: number }
   | { t: 'bossLeave' }
@@ -31,6 +33,8 @@ export type ServerMessage =
   | { t: 'matchFound'; matchId: string; opponent: string; friendly?: boolean }
   | { t: 'battle'; snapshot: BattleSnapshot }
   | { t: 'matchEnd'; result: MatchResult }
+  | { t: 'replayStart'; opponent: string } // begin a replay stream (battle snapshots follow)
+  | { t: 'replayEnd'; outcome: 'win' | 'loss' | 'draw'; yourScore: number; opponentScore: number }
   | { t: 'boss'; snapshot: BossSnapshot }
   | { t: 'bossEnd'; result: BossResult }
   | { t: 'error'; error: string }

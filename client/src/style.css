@@ -488,6 +488,13 @@ input[type="text"]::placeholder { color: #9b8763; }
   padding: 6px 0 6px 12px; /* nudge for the letter-spacing on the right */
 }
 
+/* ===== Replay viewer ===== */
+.replay-badge {
+  position: absolute; top: 54px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.55); color: #ff6b6b; font-weight: 900; font-size: 12px;
+  letter-spacing: 2px; padding: 3px 10px; border-radius: 999px; pointer-events: none;
+}
+
 /* ===== Leaderboard ===== */
 .lb-tabs button.active { outline: 3px solid var(--gold-1); outline-offset: 1px; }
 .lb-row { align-items: center; }

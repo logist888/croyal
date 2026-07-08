@@ -7,6 +7,7 @@ import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './tele
 import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, setUI, logoHtml, type Nav } from './ui';
 import { renderOnboarding, needsOnboarding } from './onboarding';
 import { startBattle } from './battle';
+import { startReplay } from './replay';
 import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
 import { loadAssetManifest, menuBgUrl } from './assets';
@@ -26,6 +27,7 @@ const nav: Nav = {
   toFriendly: () => renderFriendly(nav),
   toFriendlyHost: () => { void startBattle(nav, { kind: 'friendly-host' }); },
   toFriendlyGuest: (code) => { void startBattle(nav, { kind: 'friendly-guest', code }); },
+  toReplay: () => { void startReplay(nav); },
 };
 
 function loading(text: string) {

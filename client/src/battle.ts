@@ -339,8 +339,10 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
         ${economy}
       </div>
       ${friendly ? '' : chestBlock}
+      <button id="replay" class="secondary">${t('menu.replay')}</button>
       <button id="ok" class="accent">${t('battle.backToMenu')}</button>`;
     setUI(node);
+    node.querySelector<HTMLButtonElement>('#replay')!.onclick = () => { haptic('light'); nav.toReplay(); };
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toMenu();
   }
 
