@@ -71,6 +71,31 @@ export interface LeaderboardClan {
   trophies: number; // sum of members' live trophies
 }
 
+// --- Tournaments (single-elimination bracket) ---
+
+export interface TournamentMatchView {
+  aName: string;
+  bName: string;
+  winner: 0 | 1 | null; // which side won (0 = a, 1 = b), null = undecided
+  youIn: boolean; // is the viewer one of the two seats
+}
+
+/** Your current standing in the tournament, driving the client's action button. */
+export type TournamentStatus =
+  | 'yourTurn' // your next match is ready to play
+  | 'playing' // your match is live
+  | 'eliminated' // you lost — knocked out
+  | 'champion' // you won it all
+  | 'done'; // finished (bots won it after you were out)
+
+export interface TournamentView {
+  size: number; // bracket size (4)
+  round: number; // current round index (0-based)
+  rounds: TournamentMatchView[][]; // pairings per round
+  status: TournamentStatus;
+  prizeGems: number; // gems awarded (0 until you place)
+}
+
 // --- Battle snapshot (server -> client) ---
 
 export type EntityKind = 'tower' | 'unit' | 'building';

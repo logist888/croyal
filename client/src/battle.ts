@@ -23,13 +23,14 @@ import { haptic } from './telegram';
 import { t, reasonText, cardName } from './i18n';
 import { cardImageUrl, uiImageUrl } from './assets';
 
-/** How a battle is entered: ranked matchmaking, or a friendly room (host/guest). */
+/** How a battle is entered: ranked matchmaking, a friendly room, or a tournament match. */
 export type BattleStart =
   | { kind: 'ranked' }
   | { kind: 'friendly-host' }
-  | { kind: 'friendly-guest'; code: string };
+  | { kind: 'friendly-guest'; code: string }
+  | { kind: 'tournament' };
 
-export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked' }): Promise<void> {
+export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked' }, onExit?: () => void): Promise<void> {
   let field: GameField | null = null;
   let hand: HandUI | null = null;
   let trio: TrioUI | null = null;
@@ -62,11 +63,14 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
   searching.className = 'screen';
   const friendly = opts.kind !== 'ranked';
 
+  const exit = onExit ?? (() => nav.toMenu());
+
   function leaveSearch() {
     if (opts.kind === 'ranked') socket.send({ t: 'cancelQueue' });
     else if (opts.kind === 'friendly-host') socket.send({ t: 'cancelFriendly' });
+    else if (opts.kind === 'tournament') socket.send({ t: 'leaveMatch' }); // forfeits the bracket match
     cleanup();
-    nav.toMenu();
+    exit();
   }
 
   function shareFriendlyCode(code: string) {
@@ -97,11 +101,15 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
         : `<div class="card"><div class="muted">${t('friendly.creating')}</div></div>`;
     } else if (opts.kind === 'friendly-guest') {
       body = `<div class="card"><div class="muted">${t('friendly.joining', { code: opts.code })}</div></div>`;
+    } else if (opts.kind === 'tournament') {
+      body = `<div class="card"><div class="muted">${t('tourney.starting')}</div></div>`;
     } else {
       body = `<div class="card"><div class="muted">${t('battle.findingHint')}</div></div>`;
     }
+    const title = opts.kind === 'tournament' ? t('tourney.title')
+      : friendly ? t('friendly.title') : t('battle.finding');
     searching.innerHTML = `
-      <h1>${friendly ? t('friendly.title') : t('battle.finding')}</h1>
+      <h1>${title}</h1>
       ${body}
       <button id="cancel" class="secondary">${errorMsg ? t('common.back') : t('common.cancel')}</button>`;
     searching.querySelector<HTMLButtonElement>('#cancel')!.onclick = leaveSearch;
@@ -339,11 +347,11 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
         ${economy}
       </div>
       ${friendly ? '' : chestBlock}
-      <button id="replay" class="secondary">${t('menu.replay')}</button>
-      <button id="ok" class="accent">${t('battle.backToMenu')}</button>`;
+      ${onExit ? '' : `<button id="replay" class="secondary">${t('menu.replay')}</button>`}
+      <button id="ok" class="accent">${onExit ? t('tourney.continue') : t('battle.backToMenu')}</button>`;
     setUI(node);
-    node.querySelector<HTMLButtonElement>('#replay')!.onclick = () => { haptic('light'); nav.toReplay(); };
-    node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toMenu();
+    node.querySelector<HTMLButtonElement>('#replay')?.addEventListener('click', () => { haptic('light'); nav.toReplay(); });
+    node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => exit();
   }
 
   try {
@@ -394,5 +402,6 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
 
   if (opts.kind === 'friendly-host') socket.send({ t: 'createFriendly' });
   else if (opts.kind === 'friendly-guest') socket.send({ t: 'joinFriendly', code: opts.code });
+  else if (opts.kind === 'tournament') socket.send({ t: 'tournamentPlay' });
   else socket.send({ t: 'queue' });
 }

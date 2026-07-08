@@ -488,6 +488,13 @@ input[type="text"]::placeholder { color: #9b8763; }
   padding: 6px 0 6px 12px; /* nudge for the letter-spacing on the right */
 }
 
+/* ===== Tournament ===== */
+.tourney-round { margin: 6px 0; }
+.tourney-round-label { font-weight: 700; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; margin: 8px 0 4px; }
+.tourney-match { padding: 10px 12px; }
+.tourney-match.you { border-color: var(--gold-1); box-shadow: inset 0 0 0 1px var(--gold-1), 0 0 8px rgba(255,216,102,0.35); }
+.tourney-win { font-weight: 900; color: var(--gold-1); }
+
 /* ===== Replay viewer ===== */
 .replay-badge {
   position: absolute; top: 54px; left: 50%; transform: translateX(-50%);

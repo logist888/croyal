@@ -81,6 +81,18 @@ export function attachWebSocket(server: Server): void {
         case 'leaveReplay':
           gameManager.stopReplay(userId);
           break;
+        case 'tournamentCreate':
+          gameManager.tournamentCreate(userId, send);
+          break;
+        case 'tournamentPlay':
+          gameManager.tournamentPlay(userId, send);
+          break;
+        case 'tournamentSync':
+          gameManager.tournamentSync(userId, send);
+          break;
+        case 'tournamentLeave':
+          gameManager.tournamentLeave(userId);
+          break;
         case 'bossJoin':
           gameManager.bossJoin(userId, msg.clanId, send);
           break;

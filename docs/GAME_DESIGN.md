@@ -171,6 +171,16 @@ still-waiting room. All over WebSocket (`createFriendly`/`joinFriendly`/
 `cancelFriendly` → `friendlyCreated`). A Telegram deep-link invite is a future
 add-on; today the code (with copy/share) is the invite.
 
+## Tournaments (solo bracket)
+A **4-player single-elimination** tournament vs bots: you + 3 bots, semifinals then
+final. Your matches are played **live** through the normal battle engine
+(friendly-flagged — no ladder trophies); bot-vs-bot pairings are **auto-resolved**
+by a deterministic headless simulation. The server owns the bracket and advances it
+as matches finish; the **champion earns gems** (💎30, finalist 💎10) — granted
+server-side so only real match wins pay out. Reachable from the "🏆 Tournament" hub
+screen. **Multi-human lobbies by code** (several players online together) are a
+future step — the seat/bracket structures already allow human seats.
+
 ## Replays
 The simulation is **fully deterministic** — no `Math.random` / `Date.now`, only a
 seeded shuffle — so a match is reproducible from a compact recording: seed,

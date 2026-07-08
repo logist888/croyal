@@ -3,6 +3,26 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-20 — Solo tournaments (Этап 2)
+A 4-player single-elimination bracket you can run any time.
+- **Bracket core** (`game/tournament.ts`, pure/testable): seat filling with bots,
+  round seeding, winners, round count, gem prize table (champion 30 / finalist 10).
+- **Server orchestration** (`manager.ts`): a solo run = you + 3 bots. Your matches
+  are played live through the real `Match` engine (friendly-flagged — no ladder);
+  bot-vs-bot pairings are auto-resolved by a deterministic headless simulation.
+  The bracket advances automatically (semifinals → final); the champion is granted
+  gems (server-authoritative — only real match wins count). Protocol:
+  `tournamentCreate` / `tournamentPlay` / `tournamentSync` / `tournamentLeave` →
+  `tournamentState`. `createMatch` gained a winner callback so a tournament match
+  reports its result to the bracket.
+- **Client** (`tournament.ts`): a "🏆 Tournament" hub screen showing the bracket
+  and your standing; "Play your match" hands off to the battle view, which returns
+  to the bracket on finish. `startBattle` gained a `tournament` entry + `onExit`.
+  EN+RU i18n.
+- Tests 181 → **188** (`tournament.test.ts`: bracket helpers, create + auto-resolved
+  semifinal, forfeit → knocked-out with no prize, in-match guard, empty sync).
+- **Deferred**: code-based multi-human lobbies (needs several players online at once).
+
 ## build-19 — Deterministic replays (Этап 2)
 Watch your last battle back. The simulation has no nondeterminism (the only RNG
 is a seeded shuffle), so a match is fully reproducible.

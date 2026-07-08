@@ -4,12 +4,31 @@
  * these method calls.
  */
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, type Side, type PlayerProfile, type ServerMessage } from '@croyal/shared';
+import {
+  DEFAULT_DECK, DEFAULT_TRIO, TRIO_SIZE, TICK_DT,
+  type Side, type PlayerProfile, type ServerMessage, type TournamentView, type TournamentMatchView,
+} from '@croyal/shared';
 import { Match, type MatchSeat, type Sender } from './game/match';
 import { ReplayRoom, type MatchRecording } from './game/replay';
 import { BossRoom } from './game/boss';
+import { Simulation } from './game/simulation';
+import { pickBotAction } from './game/bot';
+import {
+  fillBots, seedRound, winnersOf, allResolved, totalRounds, prizeGems,
+  type TSeat, type TPairing, type Placement,
+} from './game/tournament';
 import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { store } from './store';
+
+interface TournamentRun {
+  userId: string;
+  send: Sender;
+  seats: TSeat[];
+  rounds: TPairing[][];
+  round: number;
+  status: TournamentView['status'];
+  prizeGems: number;
+}
 
 const BOT_FALLBACK_MS = 6000;
 /** How long a match survives a socket drop before the absent player forfeits. */
@@ -43,6 +62,7 @@ export class GameManager {
   private replayOrder: string[] = []; // insertion order for bounded eviction
   private lastReplay = new Map<string, string>(); // userId -> matchId
   private replayRooms = new Map<string, ReplayRoom>(); // viewerId -> active playback
+  private tournaments = new Map<string, TournamentRun>(); // userId -> solo tournament run
 
   // --- 1v1 matchmaking ---
   queue(userId: string, send: Sender): void {
@@ -166,7 +186,7 @@ export class GameManager {
     );
   }
 
-  private createMatch(seatA: MatchSeat, seatB: MatchSeat, friendly = false): void {
+  private createMatch(seatA: MatchSeat, seatB: MatchSeat, friendly = false, onComplete?: (winner: Side | null) => void): void {
     const matchId = randomUUID();
     const nameOf = (s: MatchSeat) => (s.userId ? store.getUser(s.userId)?.nickname ?? 'Player' : 'Bot');
     if (seatA.userId) {
@@ -177,25 +197,26 @@ export class GameManager {
       this.userMatch.set(seatB.userId, matchId);
       seatB.send({ t: 'matchFound', matchId, opponent: nameOf(seatA), friendly });
     }
-    const match = new Match(matchId, seatA, seatB, store, (m) => this.onMatchEnd(m, seatA, seatB), ACTIVE_BATTLE_CONFIG, friendly);
+    const match = new Match(matchId, seatA, seatB, store, (m) => this.onMatchEnd(m, seatA, seatB, onComplete), ACTIVE_BATTLE_CONFIG, friendly);
     this.matches.set(matchId, match);
     match.start();
   }
 
-  private onMatchEnd(match: Match, seatA: MatchSeat, seatB: MatchSeat): void {
-    this.storeReplay(match, seatA, seatB);
+  private onMatchEnd(match: Match, seatA: MatchSeat, seatB: MatchSeat, onComplete?: (winner: Side | null) => void): void {
+    const rec = match.getRecording();
+    this.storeReplay(match.id, rec, seatA, seatB);
     this.matches.delete(match.id);
     if (seatA.userId) { this.userMatch.delete(seatA.userId); this.clearGrace(seatA.userId); }
     if (seatB.userId) { this.userMatch.delete(seatB.userId); this.clearGrace(seatB.userId); }
+    onComplete?.(rec.winner);
   }
 
   /** Keep a bounded history of match recordings; index each human's most recent. */
-  private storeReplay(match: Match, seatA: MatchSeat, seatB: MatchSeat): void {
-    const rec = match.getRecording();
-    this.replays.set(match.id, rec);
-    this.replayOrder.push(match.id);
-    if (seatA.userId) this.lastReplay.set(seatA.userId, match.id);
-    if (seatB.userId) this.lastReplay.set(seatB.userId, match.id);
+  private storeReplay(matchId: string, rec: MatchRecording, seatA: MatchSeat, seatB: MatchSeat): void {
+    this.replays.set(matchId, rec);
+    this.replayOrder.push(matchId);
+    if (seatA.userId) this.lastReplay.set(seatA.userId, matchId);
+    if (seatB.userId) this.lastReplay.set(seatB.userId, matchId);
     while (this.replayOrder.length > REPLAY_CAP) {
       const evicted = this.replayOrder.shift()!;
       this.replays.delete(evicted);
@@ -227,6 +248,139 @@ export class GameManager {
   stopReplay(userId: string): void {
     this.replayRooms.get(userId)?.stop();
     this.replayRooms.delete(userId);
+  }
+
+  // --- Solo tournaments (4-player single-elimination vs bots) ---
+  private tourneySeed = 1;
+
+  /** Start a fresh solo tournament: you + 3 bots, semifinals then final. */
+  tournamentCreate(userId: string, send: Sender): void {
+    if (this.userMatch.has(userId)) {
+      send({ t: 'error', error: 'finish your match first' });
+      return;
+    }
+    const nickname = store.getUser(userId)?.nickname ?? 'You';
+    const seats = fillBots([{ userId, nickname }]);
+    const run: TournamentRun = {
+      userId, send, seats, rounds: [seedRound(seats)], round: 0, status: 'yourTurn', prizeGems: 0,
+    };
+    this.tournaments.set(userId, run);
+    this.progressTournament(run); // auto-resolve the other semifinal; set your turn
+    this.sendTournament(run);
+  }
+
+  /** Play your pending bracket match live (vs a bot). Advances the bracket on end. */
+  tournamentPlay(userId: string, send: Sender): void {
+    const run = this.tournaments.get(userId);
+    if (!run || run.status !== 'yourTurn' || this.userMatch.has(userId)) return;
+    const cur = run.rounds[run.round];
+    const yours = cur.find((p) => this.isYours(run, p));
+    if (!yours || yours.winner !== null) return;
+    run.send = send;
+    run.status = 'playing';
+    const youAreA = yours.a.userId === run.userId;
+    const opp = youAreA ? yours.b : yours.a;
+    const you = store.getUser(userId);
+    if (!you) return;
+    const seatA: MatchSeat = { userId, deck: battleDeckOf(you), send };
+    const seatB: MatchSeat = { userId: opp.userId, deck: this.seatDeck(opp), send: noop };
+    this.createMatch(seatA, seatB, true, (winner) => {
+      const youWon = winner === 'A'; // you are always seated as A in your tournament match
+      yours.winner = youWon === youAreA ? 0 : 1;
+      this.progressTournament(run);
+      this.sendTournament(run);
+    });
+  }
+
+  /** Re-send the current bracket (e.g. when the client returns from a match). */
+  tournamentSync(userId: string, send: Sender): void {
+    const run = this.tournaments.get(userId);
+    if (!run) return;
+    run.send = send;
+    this.sendTournament(run);
+  }
+
+  tournamentLeave(userId: string): void {
+    this.tournaments.delete(userId);
+  }
+
+  private isYours(run: TournamentRun, p: TPairing): boolean {
+    return p.a.userId === run.userId || p.b.userId === run.userId;
+  }
+
+  private seatDeck(seat: TSeat): string[] {
+    if (seat.userId) {
+      const u = store.getUser(seat.userId);
+      if (u) return battleDeckOf(u);
+    }
+    return botDeck();
+  }
+
+  /** Headlessly resolve a bot-vs-bot pairing to a winner (0 = a, 1 = b). */
+  private autoResolvePairing(a: TSeat, b: TSeat): 0 | 1 {
+    this.tourneySeed = (this.tourneySeed + 0x9e3779b1) >>> 0;
+    const sim = new Simulation(this.seatDeck(a), this.seatDeck(b), this.tourneySeed, {}, {}, ACTIVE_BATTLE_CONFIG);
+    const total = Math.round(ACTIVE_BATTLE_CONFIG.roundSeconds / TICK_DT);
+    let tc = 0;
+    for (let i = 0; i < total && !sim.result; i++) {
+      if (i % 45 === 0) {
+        for (const side of ['A', 'B'] as Side[]) {
+          const act = pickBotAction(sim, side, tc++);
+          if (act) sim.deploy(side, act.cardId, act.x, act.y);
+        }
+      }
+      sim.step(TICK_DT);
+    }
+    return sim.winnerSide === 'B' ? 1 : 0;
+  }
+
+  /** Advance the bracket as far as it can go without the human: resolve bot
+   *  pairings, then set the viewer's status (their turn / eliminated / champion). */
+  private progressTournament(run: TournamentRun): void {
+    // Resolve every pairing in the current round that the human is NOT in.
+    for (const p of run.rounds[run.round]) {
+      if (p.winner === null && !this.isYours(run, p)) p.winner = this.autoResolvePairing(p.a, p.b);
+    }
+    const cur = run.rounds[run.round];
+    const yours = cur.find((p) => this.isYours(run, p));
+    if (!yours) { run.status = 'done'; return; }
+    if (yours.winner === null) { run.status = 'yourTurn'; return; }
+
+    const youWon = (yours.winner === 0 ? yours.a : yours.b).userId === run.userId;
+    if (!youWon) {
+      run.status = 'eliminated';
+      const finalRound = totalRounds(run.seats.length) - 1;
+      this.grantPlacement(run, run.round === finalRound ? 'finalist' : 'semifinal');
+      return;
+    }
+    if (!allResolved(cur)) { run.status = 'yourTurn'; return; } // safety — bots already resolved
+    const winners = winnersOf(cur);
+    if (winners.length === 1) {
+      run.status = 'champion';
+      this.grantPlacement(run, 'champion');
+      return;
+    }
+    run.rounds.push(seedRound(winners));
+    run.round += 1;
+    this.progressTournament(run); // resolve the next round's bots and set your next match
+  }
+
+  private grantPlacement(run: TournamentRun, placement: Placement): void {
+    const gems = prizeGems(placement);
+    run.prizeGems = gems;
+    if (gems > 0) {
+      const u = store.getUser(run.userId);
+      if (u) store.updateUser(run.userId, { gems: u.gems + gems });
+    }
+  }
+
+  private sendTournament(run: TournamentRun): void {
+    const rounds: TournamentMatchView[][] = run.rounds.map((r) =>
+      r.map((p) => ({ aName: p.a.nickname, bName: p.b.nickname, winner: p.winner, youIn: this.isYours(run, p) })));
+    const view: TournamentView = {
+      size: run.seats.length, round: run.round, rounds, status: run.status, prizeGems: run.prizeGems,
+    };
+    run.send({ t: 'tournamentState', view });
   }
 
   private clearGrace(userId: string): void {

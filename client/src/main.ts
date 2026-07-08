@@ -8,6 +8,7 @@ import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPi
 import { renderOnboarding, needsOnboarding } from './onboarding';
 import { startBattle } from './battle';
 import { startReplay } from './replay';
+import { startTournament } from './tournament';
 import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
 import { loadAssetManifest, menuBgUrl } from './assets';
@@ -28,6 +29,8 @@ const nav: Nav = {
   toFriendlyHost: () => { void startBattle(nav, { kind: 'friendly-host' }); },
   toFriendlyGuest: (code) => { void startBattle(nav, { kind: 'friendly-guest', code }); },
   toReplay: () => { void startReplay(nav); },
+  toTournament: () => { void startTournament(nav); },
+  toTournamentMatch: () => { void startBattle(nav, { kind: 'tournament' }, () => nav.toTournament()); },
 };
 
 function loading(text: string) {

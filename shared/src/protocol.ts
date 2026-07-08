@@ -2,7 +2,7 @@
  * WebSocket message protocol (discriminated unions). Battle and boss raids run
  * over WebSocket; account/clan management uses REST (see server/src/http.ts).
  */
-import type { BattleSnapshot, BossSnapshot, MatchResult, BossResult } from './types';
+import type { BattleSnapshot, BossSnapshot, MatchResult, BossResult, TournamentView } from './types';
 
 // ---- Client -> Server ----
 export type ClientMessage =
@@ -19,6 +19,11 @@ export type ClientMessage =
   | { t: 'cancelFriendly' } // host: close the room while still waiting
   | { t: 'watchLastReplay' } // re-watch your most recent match (deterministic replay)
   | { t: 'leaveReplay' } // stop watching a replay
+  // Solo tournament (4-player bracket vs bots): create, play your pending match, sync, leave.
+  | { t: 'tournamentCreate' }
+  | { t: 'tournamentPlay' }
+  | { t: 'tournamentSync' } // request the current bracket state (e.g. after a match)
+  | { t: 'tournamentLeave' }
   | { t: 'bossJoin'; clanId: string }
   | { t: 'bossDeploy'; cardId: string; x?: number; y?: number }
   | { t: 'bossLeave' }
@@ -35,6 +40,7 @@ export type ServerMessage =
   | { t: 'matchEnd'; result: MatchResult }
   | { t: 'replayStart'; opponent: string } // begin a replay stream (battle snapshots follow)
   | { t: 'replayEnd'; outcome: 'win' | 'loss' | 'draw'; yourScore: number; opponentScore: number }
+  | { t: 'tournamentState'; view: TournamentView }
   | { t: 'boss'; snapshot: BossSnapshot }
   | { t: 'bossEnd'; result: BossResult }
   | { t: 'error'; error: string }
