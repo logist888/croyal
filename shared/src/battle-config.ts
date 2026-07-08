@@ -3,15 +3,22 @@
  *
  * Two independent switches select the battle core:
  *  - economy:    'elixir'  (shared pool, card costs)  | 'cooldown' (per-card recharge)
- *  - deployment: 'free-placement' (player picks tiles) | 'fixed-lane' (auto-march lanes)
+ *  - deployment: which input + movement core drives troops:
+ *      'open'           — CLASSIC Clash Royale: place anywhere on your half, units
+ *                         path to the NEAREST bridge, cross, and march on the nearest
+ *                         enemy tower, peeling to fight troops within aggro range.
+ *                         Both bridges are used naturally. (the default)
+ *      'fixed-lane'     — auto-march one lane per side (Mila's build-14 prototype).
+ *      'free-placement' — build-13 legacy: place anywhere, lock the nearest enemy,
+ *                         no terrain collisions (kept byte-identical for rollback).
  *
- * BOTH code paths live side-by-side in the simulation forever; rollback is a
+ * ALL code paths live side-by-side in the simulation forever; switching is a
  * config flip (server env BATTLE_ECONOMY / BATTLE_DEPLOYMENT), not a rewrite.
  */
 import { ROUND_SECONDS, DOUBLE_ELIXIR_LAST_SECONDS } from './constants';
 
 export type EconomyMode = 'elixir' | 'cooldown';
-export type DeploymentMode = 'free-placement' | 'fixed-lane';
+export type DeploymentMode = 'free-placement' | 'fixed-lane' | 'open';
 
 export interface BattleConfig {
   economy: EconomyMode;
@@ -27,7 +34,20 @@ export interface BattleConfig {
   finalCooldownMultiplier: number;
 }
 
-/** The new battle core (Mila's redesign): 3-minute match, card cooldowns, auto-march lanes. */
+/**
+ * The classic battle core: 3-minute match, card cooldowns, and OPEN placement —
+ * tap anywhere on your half, troops path across the nearest bridge and march on
+ * the nearest enemy tower. Both bridges are in play. This is the default.
+ */
+export const OPEN_BATTLE_CONFIG: BattleConfig = {
+  economy: 'cooldown',
+  deployment: 'open',
+  roundSeconds: 180,
+  finalPhaseLastSeconds: 60,
+  finalCooldownMultiplier: 0.5,
+};
+
+/** Mila's build-14 prototype core: card cooldowns + single auto-march lane per side. */
 export const COOLDOWN_BATTLE_CONFIG: BattleConfig = {
   economy: 'cooldown',
   deployment: 'fixed-lane',
@@ -45,4 +65,4 @@ export const LEGACY_BATTLE_CONFIG: BattleConfig = {
   finalCooldownMultiplier: 1,
 };
 
-export const DEFAULT_BATTLE_CONFIG: BattleConfig = COOLDOWN_BATTLE_CONFIG;
+export const DEFAULT_BATTLE_CONFIG: BattleConfig = OPEN_BATTLE_CONFIG;

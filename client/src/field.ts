@@ -73,6 +73,7 @@ class FieldScene extends Phaser.Scene {
   private loadList: { key: string; url: string }[] = [];
   private arenaUrl?: string;
   private marker: { x: number; y: number; valid: boolean } | null = null;
+  private deployActive = false; // tint the player's own half while a troop is armed (open mode)
 
   constructor() { super('field'); }
 
@@ -134,6 +135,10 @@ class FieldScene extends Phaser.Scene {
 
   setMarker(m: { x: number; y: number; valid: boolean } | null) {
     this.marker = m;
+  }
+
+  setDeployActive(on: boolean) {
+    this.deployActive = on;
   }
 
   setFastPhase(on: boolean) {
@@ -308,6 +313,17 @@ class FieldScene extends Phaser.Scene {
 
     if (this.fastPhase) {
       g.fillStyle(0xffb300, 0.07).fillRect(0, 0, this.w, this.h);
+    }
+
+    // Open mode: while a troop is armed, tint the deployable area. The flip
+    // keeps the player's own half at the bottom of the screen, so the zone is
+    // always "below the river", regardless of side.
+    if (this.deployActive) {
+      const riverCenterPy = this.flip ? this.h - RIVER_Y * this.sy() : RIVER_Y * this.sy();
+      const top = riverCenterPy + this.sy() * 0.8; // just past the river band
+      g.fillStyle(0x4caf50, 0.1).fillRect(0, top, this.w, this.h - top);
+      g.lineStyle(2, 0x8bf78b, 0.5);
+      for (let x = 0; x < this.w; x += 28) g.lineBetween(x, top, Math.min(x + 14, this.w), top);
     }
 
     if (this.marker) {
@@ -491,6 +507,10 @@ export class GameField {
 
   setMarker(tile: FieldTap | null, valid: boolean) {
     this.scene?.setMarker(tile ? { x: tile.x, y: tile.y, valid } : null);
+  }
+
+  setDeployActive(on: boolean) {
+    this.scene?.setDeployActive(on);
   }
 
   destroy() { this.game.destroy(true); }

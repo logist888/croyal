@@ -92,8 +92,15 @@ export async function startBattle(nav: Nav): Promise<void> {
   function setAiming(cardId: string | null) {
     aimingSpell = cardId;
     trio?.setAiming(cardId);
+    const card = cardId ? getCard(cardId) : null;
+    const isTroop = !!card && card.type !== 'spell';
+    // Open mode: highlight the deployable half while a troop is armed.
+    field?.setDeployActive(!lanes && isTroop);
     const hint = document.querySelector<HTMLDivElement>('#aim-hint');
-    if (hint) hint.style.display = cardId ? '' : 'none';
+    if (hint) {
+      hint.style.display = cardId ? '' : 'none';
+      hint.textContent = isTroop ? t('battle.deployHint') : t('battle.aimHint');
+    }
   }
 
   function buildBattleUI() {

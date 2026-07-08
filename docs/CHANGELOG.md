@@ -3,6 +3,31 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-17 — Classic open-field battle (the new default core)
+Reworked the battle deployment to the classic Clash-Royale flow, keeping the
+card-cooldown economy (no rollback to the elixir core).
+- **New `open` deployment core** (`shared/battle-config.ts`, now the default):
+  troops are **placed on your own half**; each unit paths to the **nearest
+  bridge**, crosses, and marches on the **nearest enemy tower**, peeling off to
+  fight enemy troops/buildings within an aggro radius (`OPEN_AGGRO_RADIUS`).
+  **Both bridges are used** based on placement — fixing the "everyone walks the
+  center lane" feel of the single-lane prototype. Building-hunters still ignore
+  troops. Hard terrain rules apply: no walking on water off a bridge, never
+  stand inside a tower.
+- **Movement rewrite** (`simulation.ts`): `stepOpenUnit` + `acquireOpenTarget` +
+  `nearestEnemyTower`; terrain collisions now gated by `enforcesTerrain()` (true
+  for `open`/`fixed-lane`, false for build-13 `free-placement` — legacy stays
+  byte-identical). The `fixed-lane` (build-14) and `free-placement` (build-13)
+  cores are untouched and remain selectable via `BATTLE_DEPLOYMENT`.
+- **Client**: tap a trio card to arm it, then tap your half to deploy; the
+  deployable half is tinted while a troop is armed, with a per-tap placement
+  marker (`field.setDeployActive`). The bot supplies its own placement
+  coordinates (alternating lanes), so it exercises both bridges too.
+- Tests 163 → **171** (`open-field.test.ts`: both-bridge routing, no water-walk,
+  nearest-tower targeting, aggro peel, deploy-zone gate, default-core assertion).
+  Verified end-to-end headless: a full match resolves with 0 water violations and
+  a single side crossing on both bridges.
+
 ## build-16 — Retention (Этап 1) + launch hardening
 Post-launch work: real art, live infra, and the first retention loop.
 - **Battle chests with unlock timers** (`shared/chests.ts`): a win drops a

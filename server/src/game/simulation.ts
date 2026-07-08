@@ -26,6 +26,10 @@ const MAX_ZONES = 12;
 const CHAIN_JUMP_RADIUS = 2.5;
 /** Chargers re-arm their first-hit bonus after this long without attacking. */
 const CHARGE_REARM_DEFAULT = 4;
+/** Open mode: how close an enemy troop/building must be to pull a troop off its march. */
+const OPEN_AGGRO_RADIUS = 5.5;
+/** Open mode: keep chasing an engaged troop until it strays past this (hysteresis). */
+const OPEN_AGGRO_LEASH = 7.5;
 
 /** One active status per kind: strongest magnitude wins, duration refreshes. */
 interface StatusInstance {
@@ -211,6 +215,15 @@ export class Simulation {
 
   private isStunned(e: Entity): boolean {
     return !!this.statusOf(e, 'stun');
+  }
+
+  /**
+   * Whether the terrain is solid: no walking on water off a bridge, no standing
+   * inside a tower. True for the lane and open cores; false only for build-13
+   * free-placement, which stays byte-identical for rollback.
+   */
+  private enforcesTerrain(): boolean {
+    return this.config.deployment !== 'free-placement';
   }
 
   /** The ONE place all speed math lands: root/stun stop, slow/rage/charge scale. */
@@ -445,7 +458,7 @@ export class Simulation {
           const len = d || 1;
           e.x = clamp(e.x + ((e.x - x) / len) * effect.tiles, 0.5, ARENA_WIDTH - 0.5);
           e.y = clamp(e.y + ((e.y - y) / len) * effect.tiles, 0.5, ARENA_HEIGHT - 0.5);
-          if (this.config.deployment === 'fixed-lane') this.clampCollisions(e, null);
+          if (this.enforcesTerrain()) this.clampCollisions(e, null);
           this.applyStatus(e, 'stun', 1, effect.stunSeconds, side);
           this.pushEvent({ kind: 'attack', side, fromX: x, fromY: y, toX: round2(e.x), toY: round2(e.y), ranged: false, effect: 'knockback' });
         }
@@ -660,7 +673,7 @@ export class Simulation {
       e.x += ((gx - e.x) / d) * step;
       e.y += ((gy - e.y) / d) * step;
     }
-    if (this.config.deployment === 'fixed-lane') this.clampCollisions(e, crossingBridge);
+    if (this.enforcesTerrain()) this.clampCollisions(e, crossingBridge);
   }
 
   /** Hard collision rules (fixed-lane): no water off-bridge, never stand inside a tower. */
@@ -835,6 +848,87 @@ export class Simulation {
     this.attackOrChase(e, structural, dt);
   }
 
+  // --- Open placement (classic Clash Royale) ---
+
+  /** Nearest standing enemy tower — the structural goal an open-mode troop marches on. */
+  private nearestEnemyTower(e: Entity): Entity | null {
+    const enemy = otherSide(e.side);
+    let best: Entity | null = null;
+    let bestD = Infinity;
+    for (const t of this.entities.values()) {
+      if (t.kind !== 'tower' || t.side !== enemy || t.hp <= 0) continue;
+      if (!this.canHit(e, t)) continue;
+      const d = dist(e.x, e.y, t.x, t.y);
+      if (d < bestD) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Open-mode target choice (classic): building-hunters go only for enemy
+   * buildings, then towers; everyone else engages the nearest enemy troop or
+   * building within the aggro radius, otherwise marches on the nearest tower.
+   */
+  private acquireOpenTarget(e: Entity): Entity | null {
+    const enemy = otherSide(e.side);
+    if (e.targetsBuildingsOnly) {
+      let best: Entity | null = null;
+      let bestD = Infinity;
+      for (const t of this.entities.values()) {
+        if (t.side !== enemy || t.hp <= 0 || t.kind !== 'building') continue;
+        if (!this.canHit(e, t)) continue;
+        const d = dist(e.x, e.y, t.x, t.y);
+        if (d < bestD) {
+          bestD = d;
+          best = t;
+        }
+      }
+      return best ?? this.nearestEnemyTower(e);
+    }
+    let best: Entity | null = null;
+    let bestD = Infinity;
+    for (const t of this.entities.values()) {
+      if (t.side !== enemy || t.hp <= 0) continue;
+      if (t.kind !== 'unit' && t.kind !== 'building') continue;
+      if (!this.canHit(e, t)) continue;
+      const d = dist(e.x, e.y, t.x, t.y);
+      if (d <= OPEN_AGGRO_RADIUS && d < bestD) {
+        bestD = d;
+        best = t;
+      }
+    }
+    return best ?? this.nearestEnemyTower(e);
+  }
+
+  /**
+   * One open-mode troop's turn: keep chasing a live troop/building within leash
+   * (hysteresis prevents target flip-flop), else re-pick; move via the nearest
+   * bridge toward the target and attack once in reach.
+   */
+  private stepOpenUnit(e: Entity, dt: number): void {
+    let target: Entity | null | undefined = e.targetId ? this.entities.get(e.targetId) : null;
+    const keep = target && target.hp > 0 && target.kind !== 'tower'
+      && this.canHit(e, target) && dist(e.x, e.y, target.x, target.y) <= OPEN_AGGRO_LEASH;
+    if (!keep) {
+      target = this.acquireOpenTarget(e);
+      e.targetId = target ? target.id : null;
+    }
+    if (!target) return;
+
+    const d = dist(e.x, e.y, target.x, target.y);
+    if (d <= this.reachOf(e, target)) {
+      if (e.attackCd <= 0 && e.damage > 0) {
+        this.attack(e, target);
+        e.attackCd = this.effectiveHitSpeed(e);
+      }
+    } else if (e.moveSpeed > 0) {
+      this.moveToward(e, target.x, target.y, dt); // nearest-bridge routing
+    }
+  }
+
   private stepEntity(e: Entity, dt: number): void {
     if (e.hp <= 0) return;
     if (e.lifetime !== Infinity) {
@@ -873,6 +967,10 @@ export class Simulation {
 
     if (this.config.deployment === 'fixed-lane') {
       this.stepLaneUnit(e, dt);
+      return;
+    }
+    if (this.config.deployment === 'open') {
+      this.stepOpenUnit(e, dt);
       return;
     }
 

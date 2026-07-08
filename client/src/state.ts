@@ -1,4 +1,4 @@
-import { COOLDOWN_BATTLE_CONFIG, type PlayerProfile, type Clan, type BattleModeInfo } from '@croyal/shared';
+import { DEFAULT_BATTLE_CONFIG, type PlayerProfile, type Clan, type BattleModeInfo } from '@croyal/shared';
 
 // When VITE_API_BASE is empty (production single-origin build) the API + WebSocket
 // are served from the SAME origin that served the page (works behind a tunnel /
@@ -23,5 +23,5 @@ export const state: AppState = {
   token: null,
   profile: null,
   clan: null,
-  mode: { economy: COOLDOWN_BATTLE_CONFIG.economy, deployment: COOLDOWN_BATTLE_CONFIG.deployment },
+  mode: { economy: DEFAULT_BATTLE_CONFIG.economy, deployment: DEFAULT_BATTLE_CONFIG.deployment },
 };

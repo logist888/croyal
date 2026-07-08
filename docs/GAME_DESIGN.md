@@ -2,15 +2,21 @@
 
 ## Overview
 Tower Clash is a real-time 1v1 tower-rush game. Each player brings a **battle trio**
-of 3 cards and plays them on individual recharge timers; troops auto-march down
-fixed lanes to destroy the opponent's towers. The design follows the genre formula
-with original units and no Supercell assets.
+of 3 cards and plays them on individual recharge timers; troops are **placed on
+your own half** and path across the nearest bridge to destroy the opponent's
+towers — the classic Clash-Royale-style flow. The design follows the genre
+formula with original units and no Supercell assets.
 
-> **build-14 core redesign.** The battle core was redesigned to the game
-> designer's (Мила) vision: per-card **cooldowns replace the elixir pool** and
-> **fixed lanes with auto-march replace free placement**. The previous core is
-> NOT deleted — it lives behind config flags as the rollback path (see
-> [Reversibility](#reversibility--the-legacy-core)).
+> **build-17 — classic open placement (the default).** Troops are deployed by
+> tapping your half of the field; each unit walks to the **nearest bridge**,
+> crosses, and marches on the **nearest enemy tower**, peeling off to fight enemy
+> troops within aggro range. **Both bridges are used** naturally, based on where
+> you place. This is the `open` deployment core.
+>
+> **build-14 (cooldowns).** Per-card **cooldowns replaced the elixir pool** — kept.
+> Build-14 also introduced single-lane **auto-march** (`fixed-lane`); that core is
+> NOT deleted — it and the build-13 elixir/`free-placement` core both live behind
+> config flags (see [Reversibility](#reversibility--the-legacy-core)).
 
 ## Arena
 - A fixed field of **18 × 30 tiles** (`ARENA_WIDTH` × `ARENA_HEIGHT`).
@@ -50,7 +56,22 @@ with original units and no Supercell assets.
 - The hand occupies the bottom of the screen; each card shows its own recharge
   overlay and countdown.
 
-## Fixed lanes & auto-march
+## Open placement (classic — the default core)
+- The player taps **anywhere on their own half** (`canDeployTroop`: your half,
+  plus an enemy lane once its princess tower falls). Spells are aimed anywhere in
+  the field.
+- Each troop routes to the **nearest bridge**, crosses, and marches on the
+  **nearest standing enemy tower** — so left-side placement crosses the left
+  bridge, right-side the right. Both bridges are in play.
+- A marching troop **peels off** to fight the nearest enemy troop/building within
+  an aggro radius (`OPEN_AGGRO_RADIUS = 5.5` tiles), chasing until the target
+  strays past a leash (`OPEN_AGGRO_LEASH`), then resumes its march.
+  Building-hunters (`targetsBuildingsOnly`) ignore troops entirely — buildings,
+  then towers.
+- The hard terrain rules apply (shared with fixed-lane): ground troops cross ONLY
+  on a bridge deck, and never stand inside a tower hitbox.
+
+## Fixed lanes & auto-march (alternate core: `BATTLE_DEPLOYMENT=fixed-lane`)
 - The player chooses **WHICH card and WHEN** — never where. Troop/building
   deploys carry **no coordinates**; the server spawns them at the side's lane
   point (`LANE_SPAWN`).
@@ -144,17 +165,23 @@ See [CLANS.md](CLANS.md). Clanmates fight a shared boss; **2+ simultaneous raide
 double** the boss HP and damage. Raiders play on card cooldowns stretched **×1.5**.
 Each raider's contributed damage is tracked and shown on the result screen.
 
-## Reversibility — the legacy core
-Per the GDD requirement, the pre-redesign core (shared elixir pool, 8-card deck
-with a 4-card cycling hand, free drag-to-deploy placement, 4-minute round) is
-fully preserved behind two config flags:
+## Reversibility — the alternate cores
+Per the GDD requirement, every battle core lives side-by-side behind two config
+flags; switching is an **ops action** (restart the server), not a code change:
 
 - `BATTLE_ECONOMY=elixir|cooldown`
-- `BATTLE_DEPLOYMENT=free-placement|fixed-lane`
+- `BATTLE_DEPLOYMENT=open|fixed-lane|free-placement`
 
-Rollback is an **ops action** — restart the server with the legacy values; no
-code changes, no redeploy. Every card carries BOTH `cost` (elixir) and
-`cooldownSec`. The legacy behavior is pinned by its own test suite.
+Defaults are the classic **`open`** core (`cooldown` + `open`). Cores:
+- **`open`** — classic placement on your half, nearest-bridge routing, both
+  bridges (the default; build-17).
+- **`fixed-lane`** — build-14 single-lane auto-march + intercept.
+- **`free-placement`** (with `elixir`) — the full build-13 legacy core: shared
+  elixir pool, 8-card deck with a 4-card cycling hand, drag-to-deploy, 4-minute
+  round, nearest-enemy targeting, **no terrain collisions** (kept byte-identical).
+
+Every card carries BOTH `cost` (elixir) and `cooldownSec`. Each core is pinned by
+its own test suite (`open-field`, `lane-march`/`intercept`, `simulation`).
 
 **Documented deviation from build-13:** two build-13 defects stay fixed in the
 legacy mode as well, because rolling back to them would restore a broken game,
