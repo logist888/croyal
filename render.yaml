@@ -26,3 +26,11 @@ services:
       # health URL, e.g. https://<app>.onrender.com/api/health
       - key: KEEPALIVE_URL
         sync: false
+      # Telegram Stars payments (gems). OFF by default — flip to "1" only AFTER
+      # wiring the bot webhook and testing a purchase (see docs/PAYMENTS.md).
+      - key: STARS_ENABLED
+        value: "0"
+      # Optional shared secret for the Telegram webhook (setWebhook secret_token).
+      # Paste the value in the Render dashboard (Environment).
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false

@@ -32,7 +32,7 @@ const nav: Nav = {
   toTournament: () => { void startTournament(nav); },
   toTournamentMatch: () => { void startBattle(nav, { kind: 'tournament' }, () => nav.toTournament()); },
   toWar: () => { void renderWar(nav); },
-  toShop: () => renderShop(nav),
+  toShop: () => { void renderShop(nav); },
 };
 
 function loading(text: string) {

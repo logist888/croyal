@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   token   UUID PRIMARY KEY,
   user_id UUID NOT NULL
 );
+CREATE TABLE IF NOT EXISTS payments (
+  charge_id  TEXT PRIMARY KEY,
+  user_id    UUID NOT NULL,
+  gems       INT NOT NULL,
+  created_at BIGINT NOT NULL
+);
 `;
 
 export interface LoadedData {
@@ -150,5 +156,19 @@ export class Db {
 
   upsertSession(token: string, userId: string): void {
     this.run('INSERT INTO sessions (token, user_id) VALUES ($1,$2) ON CONFLICT (token) DO NOTHING', [token, userId]);
+  }
+
+  /**
+   * Record a Telegram payment charge idempotently. Returns true only if this is
+   * the FIRST time we've seen the charge — the caller credits gems on true only,
+   * so a webhook retry can never double-credit. Awaited (not fire-and-forget)
+   * because it guards real money.
+   */
+  async recordPayment(chargeId: string, userId: string, gems: number): Promise<boolean> {
+    const r = await this.pool.query(
+      'INSERT INTO payments (charge_id, user_id, gems, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT (charge_id) DO NOTHING',
+      [chargeId, userId, gems, Date.now()],
+    );
+    return r.rowCount === 1;
   }
 }

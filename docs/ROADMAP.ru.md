@@ -98,10 +98,12 @@
 **[решение]** — выбрать модель. Рекомендация: **Telegram Stars** (нативная валюта
 Mini Apps, минимум трения) как основной канал.
 
-1. 🟡 **Магазин гемов за Telegram Stars** (гемы уже есть в профиле, нужен источник).
-   Следующий шаг: серверный invoice (Bot API `createInvoiceLink`, валюта XTR) +
-   вебхук бота (`pre_checkout_query` / `successful_payment`) с идемпотентным
-   начислением. Требует настройки вебхука и живого теста — под gate `BOT_TOKEN`.
+1. 🟢 **Магазин гемов за Telegram Stars** — ✅ код (build-23): серверный invoice
+   (`createInvoiceLink`, XTR) + вебхук бота (`pre_checkout_query` →
+   `answerPreCheckoutQuery`, `successful_payment` → идемпотентное начисление,
+   таблица `payments` от двойного зачисления). Под gate `STARS_ENABLED` (по
+   умолчанию ВЫКЛ — ничего не списывается). **Осталось тебе:** настроить вебхук и
+   провести живой тест — см. [PAYMENTS.md](PAYMENTS.md), затем `STARS_ENABLED=1`.
 2. 🟢 **Магазин (гемы → золото)** — ✅ (build-22): экран «🛒 Магазин», паки золота за
    гемы (сток; бонус к курсу на больших паках), `store.buyGoldPack`. Ускорение
    сундуков за гемы уже было (build-16). `store.grantGems` готов под Stars (п.1).

@@ -3,6 +3,29 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-23 — Telegram Stars → gems (Этап 3, real-money source)
+The monetization source: buy gems with Telegram Stars (currency XTR).
+- **Gem packs** (`shared/shop.ts`, `GEM_PACKS`): gems for Stars, better rate on
+  bigger packs (tune the numbers freely).
+- **Payments** (`server/src/payments.ts`): `createStarsInvoiceLink` (Bot API),
+  `answerPreCheckoutQuery`, and a testable `handleTelegramUpdate` — approve the
+  pre-checkout for a known pack, credit gems on `successful_payment`. Idempotent:
+  `store.claimPayment` reserves each Telegram charge id exactly once (a Postgres
+  `payments` table when persistent, an in-memory set otherwise), so a webhook
+  retry can never double-credit. `store.grantGems` is the single crediting point.
+- **API**: `POST /api/shop/stars/invoice` (gated), `POST /api/telegram/webhook`
+  (no auth — Telegram calls it; optional `TELEGRAM_WEBHOOK_SECRET` header check),
+  `GET /api/shop/config` (`starsEnabled`).
+- **Client**: the shop shows a "Gems for Telegram Stars" section only when the
+  channel is live; buying opens `Telegram.WebApp.openInvoice` and refreshes the
+  balance once the webhook credits. EN+RU i18n.
+- **Safety**: gated by `STARS_ENABLED` (default OFF) — nothing charges until you
+  wire the webhook and flip it on. The bot token is read from env, never logged
+  or committed. Setup steps in [docs/PAYMENTS.md](PAYMENTS.md).
+- Tests 202 → **208** (`payments.test.ts`: pack lookup, payload parsing,
+  pre-checkout approve/reject, credit-once-per-charge, bad payload ignored,
+  in-memory claim idempotency).
+
 ## build-22 — Shop: gems → gold (Этап 3, monetization)
 The first monetization piece — a gem sink and the shop framework.
 - **Gold packs** (`shared/shop.ts`): spend gems for gold (the upgrade currency),

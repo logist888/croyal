@@ -13,6 +13,7 @@ import {
 import { authenticate } from './auth';
 import { store } from './store';
 import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
+import { starsEnabled, createStarsInvoiceLink, answerPreCheckoutQuery, handleTelegramUpdate } from './payments';
 
 /** Which battle core this server runs — lets the client pick the right HUD. */
 function battleMode() {
@@ -140,6 +141,47 @@ export function createApp() {
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
     }
+  });
+
+  // --- Shop config: is the Stars (real-money) channel live? ---
+  app.get('/api/shop/config', requireAuth, (_req: AuthedRequest, res: Response) => {
+    res.json({ starsEnabled: starsEnabled() });
+  });
+
+  // --- Shop: buy gems with Telegram Stars (create an invoice link to openInvoice) ---
+  app.post('/api/shop/stars/invoice', requireAuth, async (req: AuthedRequest, res: Response) => {
+    if (!starsEnabled()) {
+      res.status(503).json({ error: 'Stars payments are not available yet' });
+      return;
+    }
+    try {
+      const link = await createStarsInvoiceLink(req.userId!, req.body?.packId);
+      res.json({ link });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Telegram bot webhook: pre-checkout + successful payment (NO auth — Telegram calls it) ---
+  app.post('/api/telegram/webhook', async (req: Request, res: Response) => {
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (secret && req.header('x-telegram-bot-api-secret-token') !== secret) {
+      res.sendStatus(401);
+      return;
+    }
+    try {
+      await handleTelegramUpdate(req.body, {
+        answerPreCheckout: answerPreCheckoutQuery,
+        credit: async (chargeId, userId, gems) => {
+          const isNew = await store.claimPayment(chargeId, userId, gems);
+          if (isNew) store.grantGems(userId, gems); // credit ONCE, ever
+          return isNew;
+        },
+      });
+    } catch (e) {
+      console.error('[telegram-webhook]', (e as Error).message);
+    }
+    res.sendStatus(200); // always ack so Telegram doesn't hammer retries
   });
 
   // --- Clan wars ---

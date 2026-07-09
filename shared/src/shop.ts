@@ -23,3 +23,25 @@ export const GOLD_PACKS: GoldPack[] = [
 export function goldPack(id: string): GoldPack | undefined {
   return GOLD_PACKS.find((p) => p.id === id);
 }
+
+/**
+ * Gem packs bought with Telegram Stars (currency XTR) — the real-money source.
+ * `stars` is the price in whole Stars; bigger packs give more gems per Star.
+ * These amounts are a starting point — tune freely; the server prices from here.
+ */
+export interface GemPack {
+  id: string;
+  gems: number;
+  stars: number;
+}
+
+export const GEM_PACKS: GemPack[] = [
+  { id: 'gems_s', gems: 80, stars: 45 },
+  { id: 'gems_m', gems: 500, stars: 250 },
+  { id: 'gems_l', gems: 1200, stars: 500 },
+  { id: 'gems_xl', gems: 2500, stars: 1000 },
+];
+
+export function gemPack(id: string): GemPack | undefined {
+  return GEM_PACKS.find((p) => p.id === id);
+}

@@ -448,6 +448,19 @@ export class Store {
     return user;
   }
 
+  /**
+   * Reserve a Telegram payment charge exactly once (idempotency for real money).
+   * Returns true if this charge is new (caller should credit), false if already
+   * processed. Backed by a Postgres UNIQUE insert when persistent, else in-memory.
+   */
+  private processedPayments = new Set<string>();
+  async claimPayment(chargeId: string, userId: string, gems: number): Promise<boolean> {
+    if (this.db) return this.db.recordPayment(chargeId, userId, gems);
+    if (this.processedPayments.has(chargeId)) return false;
+    this.processedPayments.add(chargeId);
+    return true;
+  }
+
   // --- Clan wars (weekly, see shared/warfare.ts) ---
 
   /**

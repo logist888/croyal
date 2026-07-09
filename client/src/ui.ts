@@ -9,7 +9,7 @@ import {
   pairFor, isCardUnlocked, unlockLeagueIndex,
   CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
   hasDailyRewards, loginReward, questClaimable, DAILY_REWARDS,
-  seasonRemainingMs, leagueName as seasonLeagueName, GOLD_PACKS,
+  seasonRemainingMs, leagueName as seasonLeagueName, GOLD_PACKS, GEM_PACKS,
   type ChestSlot, type DailyState, type DailyQuest, type SeasonReward,
 } from '@croyal/shared';
 import { api, type ClanWarInfo } from './net';
@@ -638,20 +638,29 @@ export async function renderWar(nav: Nav): Promise<void> {
   }
 }
 
-// --- Shop: spend gems on gold (Этап 3 monetization) ---
+// --- Shop: gems -> gold, and Telegram Stars -> gems (Этап 3 monetization) ---
 
-export function renderShop(nav: Nav): void {
+/** Open a Telegram Stars invoice; resolves to the final status ('paid' etc.). */
+function openTelegramInvoice(link: string): Promise<string> {
+  const tg = (window as unknown as { Telegram?: { WebApp?: { openInvoice?: (u: string, cb: (s: string) => void) => void } } }).Telegram?.WebApp;
+  return new Promise((resolve) => {
+    if (tg?.openInvoice) tg.openInvoice(link, resolve);
+    else resolve('unsupported');
+  });
+}
+
+export async function renderShop(nav: Nav): Promise<void> {
   setGameVisible(false);
   const p = state.profile!;
   const node = div('screen');
-  const packs = GOLD_PACKS.map((pk) => `
+  const goldPacks = GOLD_PACKS.map((pk) => `
     <div class="card shop-pack">
       <div class="row space-between">
         <div>
           <b>🪙 ${pk.gold.toLocaleString()}</b>
           <div class="muted">${t('shop.perGem', { n: Math.round(pk.gold / pk.gems) })}</div>
         </div>
-        <button class="accent shop-buy" data-pack="${pk.id}">💎 ${pk.gems}</button>
+        <button class="accent shop-buy-gold" data-pack="${pk.id}">💎 ${pk.gems}</button>
       </div>
     </div>`).join('');
   node.innerHTML = `
@@ -663,16 +672,18 @@ export function renderShop(nav: Nav): void {
       <span class="cur">🪙 <b id="shop-gold">${p.gold}</b></span>
       <span class="cur">💎 <b id="shop-gems">${p.gems}</b></span>
     </div>
+    <div id="gem-section"></div>
     <h2>${t('shop.gold')}</h2>
     <div class="muted" style="margin-bottom:6px">${t('shop.goldHint')}</div>
-    ${packs}`;
+    ${goldPacks}`;
   setUI(node);
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const refresh = () => {
     node.querySelector<HTMLElement>('#shop-gold')!.textContent = String(state.profile!.gold);
     node.querySelector<HTMLElement>('#shop-gems')!.textContent = String(state.profile!.gems);
   };
-  node.querySelectorAll<HTMLButtonElement>('.shop-buy').forEach((btn) => {
+
+  node.querySelectorAll<HTMLButtonElement>('.shop-buy-gold').forEach((btn) => {
     btn.onclick = async () => {
       const packId = btn.getAttribute('data-pack')!;
       btn.disabled = true;
@@ -688,6 +699,44 @@ export function renderShop(nav: Nav): void {
       }
     };
   });
+
+  // Gems for Telegram Stars — only shown once the real-money channel is live.
+  const gemSection = node.querySelector<HTMLDivElement>('#gem-section')!;
+  let starsOn = false;
+  try { starsOn = (await api.shopConfig()).starsEnabled; } catch { /* leave off */ }
+  if (starsOn) {
+    const gemPacks = GEM_PACKS.map((pk) => `
+      <div class="card shop-pack">
+        <div class="row space-between">
+          <b>💎 ${pk.gems.toLocaleString()}</b>
+          <button class="accent shop-buy-gems" data-pack="${pk.id}">⭐ ${pk.stars}</button>
+        </div>
+      </div>`).join('');
+    gemSection.innerHTML = `<h2>${t('shop.gems')}</h2>${gemPacks}`;
+    gemSection.querySelectorAll<HTMLButtonElement>('.shop-buy-gems').forEach((btn) => {
+      btn.onclick = async () => {
+        const packId = btn.getAttribute('data-pack')!;
+        btn.disabled = true;
+        try {
+          const { link } = await api.starsInvoice(packId);
+          const status = await openTelegramInvoice(link);
+          if (status === 'paid') {
+            // The webhook credits gems server-side; refresh to reflect it.
+            state.profile = (await api.me()).profile;
+            haptic('success');
+            refresh();
+          } else if (status === 'unsupported') {
+            alert(t('shop.openInTelegram'));
+          }
+        } catch (e) {
+          haptic('error');
+          alert((e as Error).message);
+        } finally {
+          btn.disabled = false;
+        }
+      };
+    });
+  }
 }
 
 // --- Friendly battles: host a room (share a code) or join by code ---
