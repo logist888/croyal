@@ -4,8 +4,18 @@
 import {
   encode, decodeServer, type ClientMessage, type ServerMessage,
   type PlayerProfile, type Clan, type BattleModeInfo,
-  type LeaderboardPlayer, type LeaderboardClan,
+  type LeaderboardPlayer, type LeaderboardClan, type WarClanEntry, type WarReward,
 } from '@croyal/shared';
+
+export interface ClanWarInfo {
+  inClan: boolean;
+  remainingMs: number;
+  clanScore: number;
+  yourContribution: number;
+  tier: number;
+  reward: WarReward | null;
+  leaderboard: WarClanEntry[];
+}
 import { API_BASE, WS_BASE, state } from './state';
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
@@ -50,6 +60,8 @@ export const api = {
   leaderboardPlayers: () =>
     req<{ top: LeaderboardPlayer[]; you: LeaderboardPlayer | null }>('/api/leaderboard/players'),
   leaderboardClans: () => req<{ top: LeaderboardClan[] }>('/api/leaderboard/clans'),
+  clanWar: () => req<ClanWarInfo>('/api/clan/war'),
+  claimWar: () => req<{ profile: PlayerProfile }>('/api/clan/war/claim', { method: 'POST' }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

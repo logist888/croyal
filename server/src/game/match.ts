@@ -3,7 +3,7 @@
  * snapshots, runs the bot opponent (when there is no human), and reports results.
  */
 import {
-  TICK_DT, SNAPSHOT_RATE, TICK_RATE, randomChestRarity,
+  TICK_DT, SNAPSHOT_RATE, TICK_RATE, randomChestRarity, WAR_POINTS_PER_WIN,
   otherSide, type Side, type ServerMessage, type MatchResult, type BattleRewards, type BattleConfig,
   type ChestRarity,
 } from '@croyal/shared';
@@ -242,7 +242,10 @@ export class Match {
       : null;
     // Daily-quest progress: every finished match counts as a "play"; wins count.
     this.store.progressQuest(userId, 'play', 1);
-    if (isWinner) this.store.progressQuest(userId, 'win', 1);
+    if (isWinner) {
+      this.store.progressQuest(userId, 'win', 1);
+      this.store.addWarContribution(userId, WAR_POINTS_PER_WIN); // ranked wins feed the clan war
+    }
     return { rewards: { gold: goldGain, cards: {} }, earnedChest };
   }
 }

@@ -4,7 +4,7 @@
 import { api } from './net';
 import { state } from './state';
 import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
-import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, setUI, logoHtml, type Nav } from './ui';
+import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, renderWar, setUI, logoHtml, type Nav } from './ui';
 import { renderOnboarding, needsOnboarding } from './onboarding';
 import { startBattle } from './battle';
 import { startReplay } from './replay';
@@ -31,6 +31,7 @@ const nav: Nav = {
   toReplay: () => { void startReplay(nav); },
   toTournament: () => { void startTournament(nav); },
   toTournamentMatch: () => { void startBattle(nav, { kind: 'tournament' }, () => nav.toTournament()); },
+  toWar: () => { void renderWar(nav); },
 };
 
 function loading(text: string) {

@@ -6,6 +6,7 @@ export * from './unlocks';
 export * from './chests';
 export * from './daily';
 export * from './seasons';
+export * from './warfare';
 export * from './validation';
 export * from './deploy';
 export * from './types';

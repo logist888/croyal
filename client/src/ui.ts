@@ -12,7 +12,7 @@ import {
   seasonRemainingMs, leagueName as seasonLeagueName,
   type ChestSlot, type DailyState, type DailyQuest, type SeasonReward,
 } from '@croyal/shared';
-import { api } from './net';
+import { api, type ClanWarInfo } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
@@ -40,6 +40,7 @@ export interface Nav {
   toReplay(): void;
   toTournament(): void;
   toTournamentMatch(): void;
+  toWar(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -218,7 +219,10 @@ export function renderMenu(nav: Nav): void {
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
-    <button id="tournament" class="secondary">${t('menu.tournament')}</button>
+    <div class="row">
+      <button id="tournament" class="secondary grow">${t('menu.tournament')}</button>
+      <button id="war" class="secondary grow">${t('menu.war')}${p.warReward ? ' <span class="claim-dot"></span>' : ''}</button>
+    </div>
     <div class="row">
       <button id="friendly" class="secondary grow">${t('menu.friendly')}</button>
       <button id="replay" class="secondary grow">${t('menu.replay')}</button>
@@ -272,6 +276,7 @@ export function renderMenu(nav: Nav): void {
   node.querySelector<HTMLButtonElement>('#friendly')!.onclick = () => { haptic('light'); nav.toFriendly(); };
   node.querySelector<HTMLButtonElement>('#replay')!.onclick = () => { haptic('light'); nav.toReplay(); };
   node.querySelector<HTMLButtonElement>('#tournament')!.onclick = () => { haptic('light'); nav.toTournament(); };
+  node.querySelector<HTMLButtonElement>('#war')!.onclick = () => { haptic('light'); nav.toWar(); };
   node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
   node.querySelector<HTMLButtonElement>('#leaderboard')!.onclick = () => { haptic('light'); nav.toLeaderboard(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
@@ -560,6 +565,74 @@ export async function renderLeaderboard(nav: Nav): Promise<void> {
   tabP.onclick = () => { haptic('light'); void showPlayers(); };
   tabC.onclick = () => { haptic('light'); void showClans(); };
   void showPlayers();
+}
+
+// --- Clan wars: weekly clan score + contribution + war leaderboard ---
+
+export async function renderWar(nav: Nav): Promise<void> {
+  setGameVisible(false);
+  const node = div('screen');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('menu.war')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div id="war-body" class="col">${t('common.loading')}</div>`;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+  const body = node.querySelector<HTMLDivElement>('#war-body')!;
+
+  const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`);
+
+  const paint = (w: ClanWarInfo) => {
+    const rew = w.reward
+      ? `<div class="card col" style="align-items:center">
+           <h2>${t('war.rewardTitle')}</h2>
+           <div class="muted">${t('war.rewardFrom', { score: w.reward.score })}</div>
+           <div class="row" style="gap:10px">
+             ${w.reward.gold ? `<span class="badge">🪙 ${w.reward.gold}</span>` : ''}
+             ${w.reward.gems ? `<span class="badge">💎 ${w.reward.gems}</span>` : ''}
+           </div>
+           <button id="claim-war" class="accent">${t('war.claim')}</button>
+         </div>`
+      : '';
+    const rows = w.leaderboard.map((e) => `
+      <div class="list-item lb-row ${e.clanId === state.profile?.clanId ? 'me' : ''}">
+        <div class="row" style="gap:10px"><span class="lb-rank">${medal(e.rank)}</span>
+          <div><b>${escapeHtml(e.name)}</b><div class="muted">${t('clans.members', { n: e.memberCount })}</div></div></div>
+        <span class="lb-tr">⚔️ ${e.score}</span>
+      </div>`).join('') || `<div class="muted">${t('lb.empty')}</div>`;
+    body.innerHTML = `
+      ${rew}
+      <div class="card col">
+        <div class="row space-between"><b>⚔️ ${t('war.thisWeek')}</b><span class="muted">🗓 ${fmtSeasonTime(w.remainingMs)}</span></div>
+        <div class="row space-between"><span class="muted">${t('war.clanScore')}</span><b>${w.clanScore} · ${t('war.tier', { n: w.tier })}</b></div>
+        <div class="row space-between"><span class="muted">${t('war.yourContribution')}</span><b>${w.yourContribution}</b></div>
+      </div>
+      <h2>${t('war.leaderboard')}</h2>
+      ${rows}`;
+    body.querySelector<HTMLButtonElement>('#claim-war')?.addEventListener('click', async () => {
+      try {
+        state.profile = (await api.claimWar()).profile;
+        haptic('success');
+        paint(await api.clanWar());
+      } catch (e) { haptic('error'); alert((e as Error).message); }
+    });
+  };
+
+  try {
+    const w = await api.clanWar();
+    if (!w.inClan) {
+      body.innerHTML = `<div class="card col" style="align-items:center">
+        <div class="muted">${t('war.needClan')}</div>
+        <button id="toclans" class="accent">${t('menu.clans')}</button></div>`;
+      body.querySelector<HTMLButtonElement>('#toclans')!.onclick = () => nav.toClans();
+      return;
+    }
+    paint(w);
+  } catch (e) {
+    body.innerHTML = `<div class="error">${escapeHtml((e as Error).message)}</div>`;
+  }
 }
 
 // --- Friendly battles: host a room (share a code) or join by code ---

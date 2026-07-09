@@ -13,9 +13,11 @@ import {
   rollChestRewards, unlockedCards,
   dayIndex, freshDailyState, loginReward, questClaimable,
   seasonIndex, softResetTrophies, seasonRewardFor,
+  warWeekIndex, freshWar, memberWarReward,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
   type ChestRarity, type BattleRewards, type DailyState, type QuestType,
   type LeaderboardPlayer, type LeaderboardClan, type SeasonState,
+  type ClanWarState, type WarClanEntry,
 } from '@croyal/shared';
 import { Db } from './db';
 
@@ -102,6 +104,7 @@ export class Store {
       chests: [],
       daily: null,
       season: null,
+      warReward: null,
       clanId: null,
       createdAt: Date.now(),
     };
@@ -421,6 +424,91 @@ export class Store {
     }));
   }
 
+  // --- Clan wars (weekly, see shared/warfare.ts) ---
+
+  /**
+   * Roll a clan's war state to the current week. On the first read it inits to
+   * the live week; on a new week it FINALISES the previous one — banking a
+   * pending reward on each contributing member (scaled by their contribution and
+   * the clan's final score tier) — then starts fresh. Idempotent within a week.
+   */
+  ensureClanWar(clanId: string, now = Date.now()): ClanWarState | null {
+    const clan = this.clans.get(clanId);
+    if (!clan) return null;
+    const week = warWeekIndex(now);
+    if (!clan.war) {
+      clan.war = freshWar(week);
+      this.db?.upsertClan(clan);
+      return clan.war;
+    }
+    if (clan.war.weekIndex !== week) {
+      const prev = clan.war;
+      for (const [uid, pts] of Object.entries(prev.contributions)) {
+        if (pts <= 0) continue;
+        const u = this.users.get(uid);
+        if (!u) continue;
+        const r = memberWarReward(pts, prev.score);
+        if (r.gold > 0 || r.gems > 0) {
+          u.warReward = { week: prev.weekIndex, gold: r.gold, gems: r.gems, score: prev.score };
+          this.db?.upsertUser(u);
+        }
+      }
+      clan.war = freshWar(week);
+      this.db?.upsertClan(clan);
+    }
+    return clan.war;
+  }
+
+  /** Add war points for a member's clan (called from the match hook on a ranked win). */
+  addWarContribution(userId: string, points: number, now = Date.now()): void {
+    const user = this.users.get(userId);
+    if (!user || !user.clanId) return;
+    const war = this.ensureClanWar(user.clanId, now);
+    if (!war) return;
+    war.score += points;
+    war.contributions[userId] = (war.contributions[userId] ?? 0) + points;
+    const clan = this.clans.get(user.clanId);
+    if (clan) this.db?.upsertClan(clan);
+  }
+
+  /** Claim a banked clan-war reward, if any. */
+  claimWarReward(userId: string, now = Date.now()): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    if (user.clanId) this.ensureClanWar(user.clanId, now); // a new week may have just banked one
+    if (!user.warReward) throw new Error('No war reward to claim');
+    user.gold += user.warReward.gold;
+    user.gems += user.warReward.gems;
+    user.warReward = null;
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  /** Top clans by this week's war score (rolls each clan to the current week first). */
+  topWarClans(limit = 50, now = Date.now()): WarClanEntry[] {
+    const scored = [...this.clans.values()].map((c) => {
+      const war = this.ensureClanWar(c.id, now);
+      return { clan: c, score: war?.score ?? 0 };
+    });
+    scored.sort((a, b) => b.score - a.score || b.clan.members.length - a.clan.members.length);
+    return scored.slice(0, limit).map((s, i) => ({
+      rank: i + 1,
+      clanId: s.clan.id,
+      name: s.clan.name,
+      memberCount: s.clan.members.length,
+      score: s.score,
+    }));
+  }
+
+  /** This week's war score + the caller's own contribution (for the war screen). */
+  clanWarSummary(userId: string, now = Date.now()): { score: number; yourContribution: number } | null {
+    const user = this.users.get(userId);
+    if (!user || !user.clanId) return null;
+    const war = this.ensureClanWar(user.clanId, now);
+    if (!war) return null;
+    return { score: war.score, yourContribution: war.contributions[userId] ?? 0 };
+  }
+
   // --- Sessions ---
   createSession(userId: string): string {
     const token = randomUUID();
@@ -458,7 +546,7 @@ export class Store {
       trophies: leader.trophies,
       joinedAt: Date.now(),
     };
-    const clan: Clan = { id, name: name.trim(), leaderId, createdAt: Date.now(), members: [member] };
+    const clan: Clan = { id, name: name.trim(), leaderId, createdAt: Date.now(), members: [member], war: null };
     this.clans.set(id, clan);
     leader.clanId = id;
     this.db?.upsertClan(clan);

@@ -3,6 +3,7 @@ import type { DeploymentMode, EconomyMode } from './battle-config';
 import type { ChestSlot, ChestRarity } from './chests';
 import type { DailyState } from './daily';
 import type { SeasonState } from './seasons';
+import type { ClanWarState, WarReward } from './warfare';
 
 export type Language = 'en' | 'ru';
 
@@ -31,6 +32,7 @@ export interface PlayerProfile {
   chests: ChestSlot[]; // battle-chest slots (unlock on a timer; see chests.ts)
   daily: DailyState | null; // login streak + daily quests (see daily.ts); null until first read
   season: SeasonState | null; // monthly ladder season + soft-reset (see seasons.ts); null until first read
+  warReward: WarReward | null; // pending clan-war reward (see warfare.ts); null when none
   clanId: string | null;
   createdAt: number;
 }
@@ -51,6 +53,16 @@ export interface Clan {
   leaderId: string;
   createdAt: number;
   members: ClanMember[];
+  war: ClanWarState | null; // current war-week score + contributions (see warfare.ts)
+}
+
+/** A clan's standing on the weekly war leaderboard. */
+export interface WarClanEntry {
+  rank: number;
+  clanId: string;
+  name: string;
+  memberCount: number;
+  score: number; // war points this week
 }
 
 // --- Leaderboards ---

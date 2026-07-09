@@ -191,6 +191,17 @@ last 100 recordings and each player's most recent. A **ReplayRoom** re-runs a
 streams the same `battle` snapshots to one viewer (read-only, ~2× speed). This is
 also the foundation for future **live spectating** and anti-cheat re-verification.
 
+## Clan wars (weekly)
+A war is one **UTC week** (Monday-anchored, timestamp-based — the store rolls it
+over lazily on read, no cron). Clan members earn their clan **war points** by
+winning **ranked** battles (`WAR_POINTS_PER_WIN`; friendly and tournament wins
+don't count); clans are ranked **live** by their weekly score on the "⚔️ War"
+screen. When a new week starts the previous one is **finalised**: every
+contributing member banks a **pending reward** scaled by their own contribution
+and the clan's final score **tier** (thresholds 100 / 300 / 600 → multiplier
+1 / 1.5 / 2 / 2.5), claimed from the war screen. Server-authoritative — points
+only come from real ranked wins. State lives in `clans.war` and `users.war_reward`.
+
 ## Clan boss raid (co-op)
 See [CLANS.md](CLANS.md). Clanmates fight a shared boss; **2+ simultaneous raiders
 double** the boss HP and damage. Raiders play on card cooldowns stretched **×1.5**.

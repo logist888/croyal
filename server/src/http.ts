@@ -7,7 +7,8 @@ import { existsSync } from 'node:fs';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import {
-  validateNickname, validateClanName, type Language, type PlayerProfile,
+  validateNickname, validateClanName, warWeekRemainingMs, clanWarTier,
+  type Language, type PlayerProfile,
 } from '@croyal/shared';
 import { authenticate } from './auth';
 import { store } from './store';
@@ -95,6 +96,8 @@ export function createApp() {
   app.get('/api/me', requireAuth, (req: AuthedRequest, res: Response) => {
     store.ensureDaily(req.userId!); // roll a new day's quests/streak on login
     store.ensureSeason(req.userId!); // roll over the season / bank an end-of-season reward
+    const me = store.getUser(req.userId!);
+    if (me?.clanId) store.ensureClanWar(me.clanId); // roll over the war / bank a war reward
     const user = store.getUser(req.userId!);
     res.json({ profile: user ? publicProfile(user) : null, mode: battleMode() });
   });
@@ -123,6 +126,29 @@ export function createApp() {
   app.post('/api/season/claim', requireAuth, (req: AuthedRequest, res: Response) => {
     try {
       const profile = store.claimSeasonReward(req.userId!);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Clan wars ---
+  app.get('/api/clan/war', requireAuth, (req: AuthedRequest, res: Response) => {
+    const user = store.getUser(req.userId!);
+    const summary = store.clanWarSummary(req.userId!);
+    res.json({
+      inClan: !!user?.clanId,
+      remainingMs: warWeekRemainingMs(Date.now()),
+      clanScore: summary?.score ?? 0,
+      yourContribution: summary?.yourContribution ?? 0,
+      tier: clanWarTier(summary?.score ?? 0),
+      reward: user?.warReward ?? null,
+      leaderboard: store.topWarClans(50),
+    });
+  });
+  app.post('/api/clan/war/claim', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.claimWarReward(req.userId!);
       res.json({ profile: publicProfile(profile) });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });

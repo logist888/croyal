@@ -3,6 +3,29 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-21 — Clan wars (Этап 2)
+Weekly clan competition — the last major Этап-2 feature.
+- **War core** (`shared/warfare.ts`): a war is one UTC week (Monday-anchored,
+  timestamp-based — no cron). Members earn their clan **war points** by winning
+  ranked battles (`WAR_POINTS_PER_WIN`); clans rank live by weekly score. Reward
+  math: contribution × a clan-tier multiplier (tiers at 100/300/600).
+- **Store**: `war` on the clan + `warReward` on the player. `ensureClanWar` rolls
+  the week over lazily — on a new week it FINALISES the previous one, banking a
+  pending reward on each contributor scaled by their contribution and the clan's
+  final score tier, then resets. `addWarContribution` (hooked into `match.persist`
+  on a ranked win — friendly/tournament wins don't count), `claimWarReward`,
+  `topWarClans`, `clanWarSummary`. DB: `clans.war` + `users.war_reward` JSONB
+  columns with idempotent migrations.
+- **API**: `/me` rolls the war over; `GET /api/clan/war` (week countdown, clan
+  score + tier, your contribution, pending reward, war leaderboard);
+  `POST /api/clan/war/claim`.
+- **Client**: "⚔️ War" hub screen — weekly countdown, your clan's score/tier and
+  your contribution, the war leaderboard (your clan highlighted), and a reward
+  claim card; a hub claim-dot when a reward is pending. EN+RU i18n.
+- Tests 188 → **197** (`warfare.test.ts`: week math, tiers, reward scaling, store
+  accumulation + rollover banking + claim, war leaderboard, and ranked-vs-friendly
+  contribution).
+
 ## build-20 — Solo tournaments (Этап 2)
 A 4-player single-elimination bracket you can run any time.
 - **Bracket core** (`game/tournament.ts`, pure/testable): seat filling with bots,
