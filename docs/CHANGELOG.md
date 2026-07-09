@@ -3,6 +3,25 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-24 — Battle Pass (Этап 3)
+A seasonal free/premium reward track tied to the monthly season.
+- **Track** (`shared/battlepass.ts`): 20 tiers, each with a free and a premium
+  reward (generated deterministically). `BP_XP_PER_TIER`, tiers via `bpTier`,
+  `hasBattlePassRewards` for the hub dot. Premium costs `BP_PREMIUM_COST_GEMS`.
+- **Store**: `battlePass` on the player. `ensureBattlePass` resets it on a new
+  season (keyed off `seasonIndex`, timestamp-based — no cron). `addBattlePassXp`
+  (hooked into `match.persist` — every RANKED result grants XP, win > loss;
+  friendly/tournament don't count), `buyBattlePassPremium` (spends gems),
+  `claimAllBattlePass` (grants every unlocked, unclaimed reward; premium track
+  only when owned; idempotent). DB `users.battle_pass` JSONB + migration.
+- **API**: `/me` rolls the pass over; `GET /api/battlepass` (state, tier, track);
+  `POST /api/battlepass/premium`; `POST /api/battlepass/claim`.
+- **Client**: a "🎟 Battle Pass" hub screen — season countdown, tier + XP bar, the
+  free/premium track (claimed/locked states), an unlock-Premium button and a
+  "Claim all" button; a hub claim-dot when rewards are waiting. EN+RU i18n.
+- Tests 208 → **215** (`battlepass.test.ts`: track shape, tier math, reward flag,
+  season reset, premium buy guards, claim-all + idempotency, ranked-vs-friendly XP).
+
 ## build-23 — Telegram Stars → gems (Этап 3, real-money source)
 The monetization source: buy gems with Telegram Stars (currency XTR).
 - **Gem packs** (`shared/shop.ts`, `GEM_PACKS`): gems for Stars, better rate on

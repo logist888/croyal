@@ -4,6 +4,7 @@ import type { ChestSlot, ChestRarity } from './chests';
 import type { DailyState } from './daily';
 import type { SeasonState } from './seasons';
 import type { ClanWarState, WarReward } from './warfare';
+import type { BattlePassState } from './battlepass';
 
 export type Language = 'en' | 'ru';
 
@@ -33,6 +34,7 @@ export interface PlayerProfile {
   daily: DailyState | null; // login streak + daily quests (see daily.ts); null until first read
   season: SeasonState | null; // monthly ladder season + soft-reset (see seasons.ts); null until first read
   warReward: WarReward | null; // pending clan-war reward (see warfare.ts); null when none
+  battlePass: BattlePassState | null; // seasonal battle pass (see battlepass.ts); null until first read
   clanId: string | null;
   createdAt: number;
 }

@@ -14,10 +14,11 @@ import {
   dayIndex, freshDailyState, loginReward, questClaimable,
   seasonIndex, softResetTrophies, seasonRewardFor,
   warWeekIndex, freshWar, memberWarReward, goldPack,
+  freshBattlePass, bpTier, BP_TRACK, BP_TIERS, BP_PREMIUM_COST_GEMS,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
   type ChestRarity, type BattleRewards, type DailyState, type QuestType,
   type LeaderboardPlayer, type LeaderboardClan, type SeasonState,
-  type ClanWarState, type WarClanEntry,
+  type ClanWarState, type WarClanEntry, type BattlePassState,
 } from '@croyal/shared';
 import { Db } from './db';
 
@@ -105,6 +106,7 @@ export class Store {
       daily: null,
       season: null,
       warReward: null,
+      battlePass: null,
       clanId: null,
       createdAt: Date.now(),
     };
@@ -377,6 +379,65 @@ export class Store {
     season.pendingReward = null;
     this.db?.upsertUser(user);
     return user;
+  }
+
+  // --- Battle Pass (seasonal reward track, see shared/battlepass.ts) ---
+
+  /** Roll the battle pass to the current season; a new season starts a fresh pass. */
+  ensureBattlePass(userId: string, now = Date.now()): BattlePassState | null {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    const season = seasonIndex(now);
+    if (!user.battlePass || user.battlePass.season !== season) {
+      user.battlePass = freshBattlePass(season);
+      this.db?.upsertUser(user);
+    }
+    return user.battlePass;
+  }
+
+  /** Add battle-pass XP (from the match hook on a ranked result). */
+  addBattlePassXp(userId: string, xp: number, now = Date.now()): void {
+    const bp = this.ensureBattlePass(userId, now);
+    if (!bp || xp <= 0) return;
+    bp.xp += xp;
+    this.db?.upsertUser(this.users.get(userId)!);
+  }
+
+  /** Unlock the premium track for the current season (spends gems). */
+  buyBattlePassPremium(userId: string, now = Date.now()): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const bp = this.ensureBattlePass(userId, now)!;
+    if (bp.premium) throw new Error('Premium already owned');
+    if (user.gems < BP_PREMIUM_COST_GEMS) throw new Error('Not enough gems');
+    user.gems -= BP_PREMIUM_COST_GEMS;
+    bp.premium = true;
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  /**
+   * Claim every unlocked, unclaimed tier reward (free, plus premium if owned).
+   * Returns the updated profile + the totals granted.
+   */
+  claimAllBattlePass(userId: string, now = Date.now()): { profile: PlayerProfile; gold: number; gems: number } {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const bp = this.ensureBattlePass(userId, now)!;
+    const reached = bpTier(bp.xp);
+    let gold = 0;
+    let gems = 0;
+    const take = (reward: { gold?: number; gems?: number }) => { gold += reward.gold ?? 0; gems += reward.gems ?? 0; };
+    for (let tier = 1; tier <= reached && tier <= BP_TIERS; tier++) {
+      const def = BP_TRACK[tier - 1];
+      if (!bp.claimedFree.includes(tier)) { take(def.free); bp.claimedFree.push(tier); }
+      if (bp.premium && !bp.claimedPremium.includes(tier)) { take(def.premium); bp.claimedPremium.push(tier); }
+    }
+    if (gold === 0 && gems === 0) throw new Error('Nothing to claim');
+    user.gold += gold;
+    user.gems += gems;
+    this.db?.upsertUser(user);
+    return { profile: user, gold, gems };
   }
 
   // --- Leaderboards ---

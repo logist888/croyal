@@ -495,6 +495,17 @@ input[type="text"]::placeholder { color: #9b8763; }
 .tourney-match.you { border-color: var(--gold-1); box-shadow: inset 0 0 0 1px var(--gold-1), 0 0 8px rgba(255,216,102,0.35); }
 .tourney-win { font-weight: 900; color: var(--gold-1); }
 
+/* ===== Battle Pass ===== */
+.bp-row { display: grid; grid-template-columns: 34px 1fr 1fr; gap: 6px; align-items: stretch; margin: 4px 0; }
+.bp-head { font-weight: 800; opacity: 0.8; }
+.bp-tier { display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--gold-1);
+  background: rgba(0,0,0,0.25); border: 1px solid var(--gold-edge); border-radius: 8px; }
+.bp-cell { padding: 8px 6px; border-radius: 8px; text-align: center; font-weight: 700;
+  background: rgba(0,0,0,0.2); border: 1px solid var(--gold-edge); }
+.bp-cell.bp-open { background: rgba(255,216,102,0.12); border-color: var(--gold-1); }
+.bp-cell.bp-locked { opacity: 0.45; }
+.bp-cell.bp-claimed { opacity: 0.6; text-decoration: line-through; }
+
 /* ===== Replay viewer ===== */
 .replay-badge {
   position: absolute; top: 54px; left: 50%; transform: translateX(-50%);

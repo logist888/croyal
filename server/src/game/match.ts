@@ -4,6 +4,7 @@
  */
 import {
   TICK_DT, SNAPSHOT_RATE, TICK_RATE, randomChestRarity, WAR_POINTS_PER_WIN,
+  BP_XP_PER_WIN, BP_XP_PER_LOSS,
   otherSide, type Side, type ServerMessage, type MatchResult, type BattleRewards, type BattleConfig,
   type ChestRarity,
 } from '@croyal/shared';
@@ -242,6 +243,8 @@ export class Match {
       : null;
     // Daily-quest progress: every finished match counts as a "play"; wins count.
     this.store.progressQuest(userId, 'play', 1);
+    // Battle-pass XP on every ranked result (wins worth more than losses).
+    this.store.addBattlePassXp(userId, isWinner ? BP_XP_PER_WIN : BP_XP_PER_LOSS);
     if (isWinner) {
       this.store.progressQuest(userId, 'win', 1);
       this.store.addWarContribution(userId, WAR_POINTS_PER_WIN); // ranked wins feed the clan war

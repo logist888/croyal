@@ -63,11 +63,20 @@
   and the clan's final score **tier** (100/300/600). Timestamp-based, no cron
   (DB `clans.war` + `users.war_reward`). A gem source tied to teamplay.
 
+- **Shop** (build-22/23, `shared/shop.ts`) — spend gems on **gold packs**
+  (better rate on bigger packs), and buy **gems with Telegram Stars** (currency
+  XTR; idempotent crediting via a `payments` table; gated by `STARS_ENABLED`, see
+  [PAYMENTS.md](PAYMENTS.md)). The "🛒 Shop" screen.
+- **Battle Pass** (build-24, `shared/battlepass.ts`) — a seasonal free/premium
+  reward track (20 tiers) tied to the monthly season. Earn BP-XP from ranked
+  battles; premium unlocks with gems. Claim rewards on the "🎟 Battle Pass"
+  screen. Timestamp-based reset (DB `users.battle_pass`).
+
 ## Planned (next phases)
 - **Push notifications** (Этап 1.5 of docs/ROADMAP.ru.md — deferred until the
   dev-auth hole is closed).
+- **Cosmetics** (tower skins, emotes, card frames — no-P2W gem sinks).
 - **Live spectating** and code-based multi-human tournament lobbies (Этап 2 tail).
-- **More gem sinks** (cosmetics: tower skins, emotes, card frames).
 
 Tuning for all of the above belongs in `shared/src/constants.ts` (thresholds,
 rewards) and `shared/src/cards.ts` / `scripts/gen-catalog.mjs` (card balance) so

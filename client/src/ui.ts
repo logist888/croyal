@@ -10,9 +10,10 @@ import {
   CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
   hasDailyRewards, loginReward, questClaimable, DAILY_REWARDS,
   seasonRemainingMs, leagueName as seasonLeagueName, GOLD_PACKS, GEM_PACKS,
-  type ChestSlot, type DailyState, type DailyQuest, type SeasonReward,
+  bpTierProgress, hasBattlePassRewards,
+  type ChestSlot, type DailyState, type DailyQuest, type SeasonReward, type BattlePassReward,
 } from '@croyal/shared';
-import { api, type ClanWarInfo } from './net';
+import { api, type ClanWarInfo, type BattlePassInfo } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
@@ -42,6 +43,7 @@ export interface Nav {
   toTournamentMatch(): void;
   toWar(): void;
   toShop(): void;
+  toBattlePass(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -220,6 +222,7 @@ export function renderMenu(nav: Nav): void {
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
+    <button id="pass" class="secondary">${t('menu.pass')}${hasBattlePassRewards(p.battlePass) ? ' <span class="claim-dot"></span>' : ''}</button>
     <div class="row">
       <button id="tournament" class="secondary grow">${t('menu.tournament')}</button>
       <button id="war" class="secondary grow">${t('menu.war')}${p.warReward ? ' <span class="claim-dot"></span>' : ''}</button>
@@ -280,6 +283,7 @@ export function renderMenu(nav: Nav): void {
   node.querySelector<HTMLButtonElement>('#tournament')!.onclick = () => { haptic('light'); nav.toTournament(); };
   node.querySelector<HTMLButtonElement>('#war')!.onclick = () => { haptic('light'); nav.toWar(); };
   node.querySelector<HTMLButtonElement>('#shop')!.onclick = () => { haptic('light'); nav.toShop(); };
+  node.querySelector<HTMLButtonElement>('#pass')!.onclick = () => { haptic('light'); nav.toBattlePass(); };
   node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
   node.querySelector<HTMLButtonElement>('#leaderboard')!.onclick = () => { haptic('light'); nav.toLeaderboard(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
@@ -770,6 +774,86 @@ export function renderFriendly(nav: Nav): void {
     haptic('light');
     nav.toFriendlyGuest(code);
   };
+}
+
+// --- Battle Pass: seasonal free/premium reward track (Этап 3) ---
+
+function bpRewardLabel(r: BattlePassReward): string {
+  if (r.gems) return `💎 ${r.gems}`;
+  if (r.gold) return `🪙 ${r.gold}`;
+  return '—';
+}
+
+export async function renderBattlePass(nav: Nav): Promise<void> {
+  setGameVisible(false);
+  const node = div('screen');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('menu.pass')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div id="bp-body" class="col">${t('common.loading')}</div>`;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+  const body = node.querySelector<HTMLDivElement>('#bp-body')!;
+
+  const paint = (info: BattlePassInfo) => {
+    const bp = info.state;
+    const tier = info.tier;
+    const prog = bpTierProgress(bp?.xp ?? 0);
+    const pct = Math.round((prog.into / prog.need) * 100);
+    const premium = !!bp?.premium;
+    const claimable = hasBattlePassRewards(bp);
+
+    const rows = info.track.map((tr) => {
+      const reached = tr.tier <= tier;
+      const freeClaimed = bp?.claimedFree.includes(tr.tier);
+      const premClaimed = bp?.claimedPremium.includes(tr.tier);
+      const cell = (label: string, on: boolean, claimed: boolean | undefined, locked: boolean) =>
+        `<div class="bp-cell ${on ? 'bp-open' : 'bp-locked'} ${claimed ? 'bp-claimed' : ''}">
+           ${locked ? '🔒 ' : ''}${label}${claimed ? ' ✓' : ''}</div>`;
+      return `
+        <div class="bp-row ${reached ? 'bp-reached' : ''}">
+          <div class="bp-tier">${tr.tier}</div>
+          ${cell(bpRewardLabel(tr.free), reached, freeClaimed, false)}
+          ${cell(bpRewardLabel(tr.premium), reached && premium, premClaimed, !premium)}
+        </div>`;
+    }).join('');
+
+    body.innerHTML = `
+      <div class="card col">
+        <div class="row space-between"><b>${t('pass.tier', { n: tier })}</b><span class="muted">🗓 ${fmtSeasonTime(seasonRemainingMs(Date.now()))}</span></div>
+        <div class="league-bar"><div class="league-fill" style="width:${pct}%"></div></div>
+        <div class="muted">${t('pass.xp', { into: prog.into, need: prog.need })}</div>
+      </div>
+      ${premium
+        ? `<div class="muted" style="text-align:center">${t('pass.premiumActive')}</div>`
+        : `<button id="buy-premium" class="accent">${t('pass.getPremium', { n: info.premiumCost })}</button>`}
+      <button id="claim-all" class="accent" ${claimable ? '' : 'disabled'}>${t('pass.claimAll')}</button>
+      <div class="bp-head bp-row"><div class="bp-tier">#</div><div class="bp-cell">${t('pass.free')}</div><div class="bp-cell">${t('pass.premium')}</div></div>
+      ${rows}`;
+
+    body.querySelector<HTMLButtonElement>('#buy-premium')?.addEventListener('click', async () => {
+      if (!confirm(t('pass.confirmPremium', { n: info.premiumCost }))) return;
+      try { state.profile = (await api.buyBattlePassPremium()).profile; haptic('success'); paint(await api.battlePass()); }
+      catch (e) { haptic('error'); alert((e as Error).message); }
+    });
+    body.querySelector<HTMLButtonElement>('#claim-all')?.addEventListener('click', async () => {
+      try {
+        const r = await api.claimBattlePass();
+        state.profile = r.profile;
+        haptic('success');
+        alert(t('pass.claimed', { gold: r.gold, gems: r.gems }));
+        paint(await api.battlePass());
+      } catch (e) { haptic('error'); alert((e as Error).message); }
+    });
+  };
+
+  try {
+    paint(await api.battlePass());
+  } catch (e) {
+    body.innerHTML = `<div class="error">${escapeHtml((e as Error).message)}</div>`;
+  }
 }
 
 // --- Battle trio picker: choose exactly TRIO_SIZE cards from the collection ---

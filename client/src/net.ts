@@ -5,7 +5,17 @@ import {
   encode, decodeServer, type ClientMessage, type ServerMessage,
   type PlayerProfile, type Clan, type BattleModeInfo,
   type LeaderboardPlayer, type LeaderboardClan, type WarClanEntry, type WarReward,
+  type BattlePassState, type BattlePassTier,
 } from '@croyal/shared';
+
+export interface BattlePassInfo {
+  state: BattlePassState | null;
+  tier: number;
+  track: BattlePassTier[];
+  tiers: number;
+  xpPerTier: number;
+  premiumCost: number;
+}
 
 export interface ClanWarInfo {
   inClan: boolean;
@@ -64,6 +74,9 @@ export const api = {
   claimWar: () => req<{ profile: PlayerProfile }>('/api/clan/war/claim', { method: 'POST' }),
   buyGold: (packId: string) =>
     req<{ profile: PlayerProfile }>('/api/shop/gold', { method: 'POST', body: JSON.stringify({ packId }) }),
+  battlePass: () => req<BattlePassInfo>('/api/battlepass'),
+  buyBattlePassPremium: () => req<{ profile: PlayerProfile }>('/api/battlepass/premium', { method: 'POST' }),
+  claimBattlePass: () => req<{ profile: PlayerProfile; gold: number; gems: number }>('/api/battlepass/claim', { method: 'POST' }),
   shopConfig: () => req<{ starsEnabled: boolean }>('/api/shop/config'),
   starsInvoice: (packId: string) =>
     req<{ link: string }>('/api/shop/stars/invoice', { method: 'POST', body: JSON.stringify({ packId }) }),

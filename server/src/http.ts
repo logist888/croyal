@@ -8,6 +8,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import cors from 'cors';
 import {
   validateNickname, validateClanName, warWeekRemainingMs, clanWarTier,
+  BP_TRACK, BP_TIERS, BP_XP_PER_TIER, BP_PREMIUM_COST_GEMS, bpTier,
   type Language, type PlayerProfile,
 } from '@croyal/shared';
 import { authenticate } from './auth';
@@ -97,6 +98,7 @@ export function createApp() {
   app.get('/api/me', requireAuth, (req: AuthedRequest, res: Response) => {
     store.ensureDaily(req.userId!); // roll a new day's quests/streak on login
     store.ensureSeason(req.userId!); // roll over the season / bank an end-of-season reward
+    store.ensureBattlePass(req.userId!); // roll the battle pass to the current season
     const me = store.getUser(req.userId!);
     if (me?.clanId) store.ensureClanWar(me.clanId); // roll over the war / bank a war reward
     const user = store.getUser(req.userId!);
@@ -182,6 +184,35 @@ export function createApp() {
       console.error('[telegram-webhook]', (e as Error).message);
     }
     res.sendStatus(200); // always ack so Telegram doesn't hammer retries
+  });
+
+  // --- Battle Pass ---
+  app.get('/api/battlepass', requireAuth, (req: AuthedRequest, res: Response) => {
+    const bp = store.ensureBattlePass(req.userId!);
+    res.json({
+      state: bp,
+      tier: bp ? bpTier(bp.xp) : 0,
+      track: BP_TRACK,
+      tiers: BP_TIERS,
+      xpPerTier: BP_XP_PER_TIER,
+      premiumCost: BP_PREMIUM_COST_GEMS,
+    });
+  });
+  app.post('/api/battlepass/premium', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.buyBattlePassPremium(req.userId!);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+  app.post('/api/battlepass/claim', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const { profile, gold, gems } = store.claimAllBattlePass(req.userId!);
+      res.json({ profile: publicProfile(profile), gold, gems });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
   });
 
   // --- Clan wars ---

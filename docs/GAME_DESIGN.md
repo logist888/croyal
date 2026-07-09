@@ -191,6 +191,15 @@ last 100 recordings and each player's most recent. A **ReplayRoom** re-runs a
 streams the same `battle` snapshots to one viewer (read-only, ~2× speed). This is
 also the foundation for future **live spectating** and anti-cheat re-verification.
 
+## Battle Pass (seasonal)
+A free/premium reward track tied to the **monthly season** (see seasons.ts),
+20 tiers. Players earn **BP-XP** from ranked results (win worth more than loss;
+friendly/tournament don't count) to climb tiers, each with a **free** reward and
+a **premium** reward. The premium track unlocks with gems (`BP_PREMIUM_COST_GEMS`).
+Rewards are claimed from the "🎟 Battle Pass" screen ("Claim all"); progress
+**resets each season** (timestamp-based, keyed off `seasonIndex` — no cron).
+State lives in `users.battle_pass`. A gem sink that also drives daily engagement.
+
 ## Clan wars (weekly)
 A war is one **UTC week** (Monday-anchored, timestamp-based — the store rolls it
 over lazily on read, no cron). Clan members earn their clan **war points** by
