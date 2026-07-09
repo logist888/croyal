@@ -13,7 +13,7 @@ import {
   rollChestRewards, unlockedCards,
   dayIndex, freshDailyState, loginReward, questClaimable,
   seasonIndex, softResetTrophies, seasonRewardFor,
-  warWeekIndex, freshWar, memberWarReward,
+  warWeekIndex, freshWar, memberWarReward, goldPack,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
   type ChestRarity, type BattleRewards, type DailyState, type QuestType,
   type LeaderboardPlayer, type LeaderboardClan, type SeasonState,
@@ -422,6 +422,30 @@ export class Store {
       memberCount: s.clan.members.length,
       trophies: s.trophies,
     }));
+  }
+
+  // --- Shop (see shared/shop.ts) ---
+
+  /** Buy a gold pack: spend gems, gain gold. */
+  buyGoldPack(userId: string, packId: string): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const pack = goldPack(packId);
+    if (!pack) throw new Error('Unknown pack');
+    if (user.gems < pack.gems) throw new Error('Not enough gems');
+    user.gems -= pack.gems;
+    user.gold += pack.gold;
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  /** Credit gems to a user (e.g. a completed Telegram Stars purchase). */
+  grantGems(userId: string, gems: number): PlayerProfile | undefined {
+    const user = this.users.get(userId);
+    if (!user || gems <= 0) return user;
+    user.gems += gems;
+    this.db?.upsertUser(user);
+    return user;
   }
 
   // --- Clan wars (weekly, see shared/warfare.ts) ---

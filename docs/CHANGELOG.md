@@ -3,6 +3,20 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-22 — Shop: gems → gold (Этап 3, monetization)
+The first monetization piece — a gem sink and the shop framework.
+- **Gold packs** (`shared/shop.ts`): spend gems for gold (the upgrade currency),
+  with a better gold-per-gem rate on bigger packs. Data-only so client and server
+  price identically. `store.buyGoldPack` (validates gems, grants gold) +
+  `store.grantGems` (the crediting path a Telegram Stars purchase will call next).
+- **API**: `POST /api/shop/gold { packId }`.
+- **Client**: a "🛒 Shop" hub screen showing your gold/gems balance and the gold
+  packs with buy buttons. EN+RU i18n.
+- Tests 197 → **202** (`shop.test.ts`: pack lookup + bulk-rate ordering, buy spends
+  gems / grants gold, unaffordable + unknown pack guards, grantGems crediting).
+- **Next**: Telegram Stars → gems (real-money source) — server invoice + bot
+  webhook + idempotent crediting; needs live webhook wiring (gated by `BOT_TOKEN`).
+
 ## build-21 — Clan wars (Этап 2)
 Weekly clan competition — the last major Этап-2 feature.
 - **War core** (`shared/warfare.ts`): a war is one UTC week (Monday-anchored,

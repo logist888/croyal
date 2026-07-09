@@ -132,6 +132,16 @@ export function createApp() {
     }
   });
 
+  // --- Shop: spend gems on gold ---
+  app.post('/api/shop/gold', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.buyGoldPack(req.userId!, req.body?.packId);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
   // --- Clan wars ---
   app.get('/api/clan/war', requireAuth, (req: AuthedRequest, res: Response) => {
     const user = store.getUser(req.userId!);

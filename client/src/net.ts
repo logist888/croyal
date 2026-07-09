@@ -62,6 +62,8 @@ export const api = {
   leaderboardClans: () => req<{ top: LeaderboardClan[] }>('/api/leaderboard/clans'),
   clanWar: () => req<ClanWarInfo>('/api/clan/war'),
   claimWar: () => req<{ profile: PlayerProfile }>('/api/clan/war/claim', { method: 'POST' }),
+  buyGold: (packId: string) =>
+    req<{ profile: PlayerProfile }>('/api/shop/gold', { method: 'POST', body: JSON.stringify({ packId }) }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),
   getClan: (id: string) => req<{ clan: Clan }>(`/api/clans/${id}`),
   createClan: (name: string) => req<{ clan: Clan }>('/api/clans', { method: 'POST', body: JSON.stringify({ name }) }),

@@ -7,6 +7,7 @@ export * from './chests';
 export * from './daily';
 export * from './seasons';
 export * from './warfare';
+export * from './shop';
 export * from './validation';
 export * from './deploy';
 export * from './types';

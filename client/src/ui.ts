@@ -9,7 +9,7 @@ import {
   pairFor, isCardUnlocked, unlockLeagueIndex,
   CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
   hasDailyRewards, loginReward, questClaimable, DAILY_REWARDS,
-  seasonRemainingMs, leagueName as seasonLeagueName,
+  seasonRemainingMs, leagueName as seasonLeagueName, GOLD_PACKS,
   type ChestSlot, type DailyState, type DailyQuest, type SeasonReward,
 } from '@croyal/shared';
 import { api, type ClanWarInfo } from './net';
@@ -41,6 +41,7 @@ export interface Nav {
   toTournament(): void;
   toTournamentMatch(): void;
   toWar(): void;
+  toShop(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
@@ -231,6 +232,7 @@ export function renderMenu(nav: Nav): void {
       <button id="daily" class="secondary grow">${t('menu.daily')}${p.daily && hasDailyRewards(p.daily) ? ' <span class="claim-dot"></span>' : ''}</button>
       <button id="leaderboard" class="secondary grow">${t('menu.leaderboard')}</button>
     </div>
+    <button id="shop" class="secondary">${t('menu.shop')}</button>
     <div class="row">
       <button id="cards" class="secondary grow">${t('menu.cards')}</button>
       <button id="clans" class="secondary grow">${t('menu.clans')}</button>
@@ -277,6 +279,7 @@ export function renderMenu(nav: Nav): void {
   node.querySelector<HTMLButtonElement>('#replay')!.onclick = () => { haptic('light'); nav.toReplay(); };
   node.querySelector<HTMLButtonElement>('#tournament')!.onclick = () => { haptic('light'); nav.toTournament(); };
   node.querySelector<HTMLButtonElement>('#war')!.onclick = () => { haptic('light'); nav.toWar(); };
+  node.querySelector<HTMLButtonElement>('#shop')!.onclick = () => { haptic('light'); nav.toShop(); };
   node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
   node.querySelector<HTMLButtonElement>('#leaderboard')!.onclick = () => { haptic('light'); nav.toLeaderboard(); };
   node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
@@ -633,6 +636,58 @@ export async function renderWar(nav: Nav): Promise<void> {
   } catch (e) {
     body.innerHTML = `<div class="error">${escapeHtml((e as Error).message)}</div>`;
   }
+}
+
+// --- Shop: spend gems on gold (Этап 3 monetization) ---
+
+export function renderShop(nav: Nav): void {
+  setGameVisible(false);
+  const p = state.profile!;
+  const node = div('screen');
+  const packs = GOLD_PACKS.map((pk) => `
+    <div class="card shop-pack">
+      <div class="row space-between">
+        <div>
+          <b>🪙 ${pk.gold.toLocaleString()}</b>
+          <div class="muted">${t('shop.perGem', { n: Math.round(pk.gold / pk.gems) })}</div>
+        </div>
+        <button class="accent shop-buy" data-pack="${pk.id}">💎 ${pk.gems}</button>
+      </div>
+    </div>`).join('');
+  node.innerHTML = `
+    <div class="row space-between">
+      <h1>${t('menu.shop')}</h1>
+      <button id="back" class="secondary">${t('common.back')}</button>
+    </div>
+    <div class="row" style="gap:14px;justify-content:center;margin:2px 0 8px">
+      <span class="cur">🪙 <b id="shop-gold">${p.gold}</b></span>
+      <span class="cur">💎 <b id="shop-gems">${p.gems}</b></span>
+    </div>
+    <h2>${t('shop.gold')}</h2>
+    <div class="muted" style="margin-bottom:6px">${t('shop.goldHint')}</div>
+    ${packs}`;
+  setUI(node);
+  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
+  const refresh = () => {
+    node.querySelector<HTMLElement>('#shop-gold')!.textContent = String(state.profile!.gold);
+    node.querySelector<HTMLElement>('#shop-gems')!.textContent = String(state.profile!.gems);
+  };
+  node.querySelectorAll<HTMLButtonElement>('.shop-buy').forEach((btn) => {
+    btn.onclick = async () => {
+      const packId = btn.getAttribute('data-pack')!;
+      btn.disabled = true;
+      try {
+        state.profile = (await api.buyGold(packId)).profile;
+        haptic('success');
+        refresh();
+      } catch (e) {
+        haptic('error');
+        alert((e as Error).message);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  });
 }
 
 // --- Friendly battles: host a room (share a code) or join by code ---
