@@ -30,20 +30,28 @@ So the safe order is: wire the webhook → test → only then set `STARS_ENABLED
 1. **Set the env vars** on the Render web service:
    - `BOT_TOKEN` — the bot token (already set for auth).
    - `STARS_ENABLED=1` — enable the channel (do this **last**, after testing).
-   - `TELEGRAM_WEBHOOK_SECRET=<random string>` — optional but recommended; the
-     webhook rejects calls whose `X-Telegram-Bot-Api-Secret-Token` header ≠ this.
+   - `TELEGRAM_WEBHOOK_SECRET` — optional but recommended; the webhook rejects
+     calls whose `X-Telegram-Bot-Api-Secret-Token` header ≠ this. **Allowed
+     characters: `A–Z a–z 0–9 _ -` only** (1–256 chars — no `<>`, spaces, etc.).
+     Generate one with `openssl rand -hex 24`. The value here **must equal** the
+     `secret_token` you pass to `setWebhook` below. Leave BOTH unset to skip the
+     check entirely.
 
-2. **Register the webhook** with Telegram (replace the placeholders; run once):
+2. **Register the webhook** with Telegram — substitute your real `<BOT_TOKEN>`
+   and the secret from step 1 (run once):
 
    ```sh
    curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
      -d "url=https://croyal.onrender.com/api/telegram/webhook" \
-     -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
+     -d "secret_token=REPLACE_WITH_YOUR_SECRET" \
      -d 'allowed_updates=["message","pre_checkout_query"]'
    ```
 
-   `successful_payment` arrives inside a `message` update, so both
-   `message` and `pre_checkout_query` must be allowed.
+   Expect `{"ok":true,...}`. `successful_payment` arrives inside a `message`
+   update, so both `message` and `pre_checkout_query` must be allowed. Set the
+   `TELEGRAM_WEBHOOK_SECRET` env var in Render **first** (and let it redeploy) so
+   the value matches, otherwise the webhook will answer `401`. To skip the secret
+   check, drop the `secret_token` line **and** leave the env var unset.
 
 3. **Test** with the cheapest pack. Confirm gems land in your balance and that a
    second (retry) webhook for the same charge does **not** double-credit (a
