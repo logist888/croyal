@@ -2,7 +2,7 @@
  * Clan boss raid controller (co-op). Joins the clan's shared boss room,
  * renders the boss + troops, and shows live per-player damage.
  */
-import { getCard, isWithinField, ARENA_HEIGHT, type BossSnapshot, type BossResult, type ServerMessage } from '@croyal/shared';
+import { getCard, isWithinField, RIVER_Y, RIVER_HALF_HEIGHT, type BossSnapshot, type BossResult, type ServerMessage } from '@croyal/shared';
 import { socket } from './net';
 import { state } from './state';
 import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
@@ -57,20 +57,31 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     nav.toClans();
   };
 
-  // Boss raid: troops land in the lower band of the field (boss is at the top).
+  // Boss raid: troops deploy on YOUR half (below the river) and cross a bridge
+  // to the boss; spells may be aimed anywhere in the field.
   function validateDeploy(cardId: string, tile: FieldTap): boolean {
     const c = getCard(cardId);
     if (!c || !isWithinField(tile.x, tile.y)) return false;
-    return c.type === 'spell' || tile.y >= ARENA_HEIGHT * 0.4;
+    return c.type === 'spell' || tile.y >= RIVER_Y + RIVER_HALF_HEIGHT;
+  }
+
+  // Cooldown mode: arm a troop card, then tap your half to choose the spawn spot.
+  let aimingCard: string | null = null;
+  function setBossAiming(cardId: string | null) {
+    aimingCard = cardId;
+    trio?.setAiming(cardId);
+    const c = cardId ? getCard(cardId) : null;
+    field?.setDeployActive(!!c && c.type !== 'spell');
   }
 
   const handEl = root.querySelector<HTMLDivElement>('#hand')!;
   if (cooldownMode) {
-    // Tap-to-play: troops land on the raider band, spells auto-aim at the boss.
     trio = buildTrioHand(handEl, {
       onPlay: (cardId) => {
-        socket.send({ t: 'bossDeploy', cardId });
-        haptic('light');
+        const c = getCard(cardId);
+        if (!c) return;
+        if (c.type === 'spell') { socket.send({ t: 'bossDeploy', cardId }); haptic('light'); return; } // auto-aims boss
+        setBossAiming(aimingCard === cardId ? null : cardId);
       },
     });
   } else {
@@ -90,7 +101,13 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
 
   const { w, h } = computeFieldSize();
   field = new GameField('arena', w, h, (tap) => {
-    if (cooldownMode) return; // tap-to-play happens on the cards themselves
+    if (cooldownMode) {
+      if (!aimingCard || !validateDeploy(aimingCard, tap)) return;
+      socket.send({ t: 'bossDeploy', cardId: aimingCard, x: tap.x, y: tap.y });
+      setBossAiming(null);
+      haptic('light');
+      return;
+    }
     const id = hand?.selected();
     if (!id) return;
     socket.send({ t: 'bossDeploy', cardId: id, x: tap.x, y: tap.y });

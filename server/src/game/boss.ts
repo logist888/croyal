@@ -5,6 +5,7 @@
  */
 import {
   TICK_DT, TICK_RATE, SNAPSHOT_RATE, ARENA_WIDTH, ARENA_HEIGHT,
+  RIVER_Y, RIVER_HALF_HEIGHT, BRIDGE_X,
   ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
   BOSS_RAID_SECONDS, BOSS_BASE_HP, BOSS_BASE_DAMAGE, BOSS_COOP_MULTIPLIER, BOSS_MAX_PLAYERS,
   BOSS_RAIDER_COOLDOWN_MULT,
@@ -38,8 +39,14 @@ interface BossUnit {
   hitSpeed: number;
   range: number;
   moveSpeed: number;
+  flying: boolean;
   color: number;
   attackCd: number;
+}
+
+/** True when a straight path from y1 to y2 would cross the river. */
+function crossesRiver(y1: number, y2: number): boolean {
+  return (y1 < RIVER_Y) !== (y2 < RIVER_Y);
 }
 
 const BOSS_POS = { x: ARENA_WIDTH / 2, y: 4 };
@@ -183,7 +190,9 @@ export class BossRoom {
       }
       return;
     }
-    // Coordinate-free troops spawn on the raider band, spread by join order.
+    // Raiders place troops by tapping their own half; coordinate-free plays
+    // (legacy elixir client) fall back to the raider band. Either way troops
+    // start BELOW the river and must cross a bridge to reach the boss.
     const seat = [...this.participants.keys()].indexOf(userId);
     const bx = x ?? ARENA_WIDTH * (0.3 + 0.4 * ((seat % 5) / 4));
     const by = y ?? ARENA_HEIGHT * 0.8;
@@ -194,16 +203,50 @@ export class BossRoom {
         ownerId: userId,
         cardId: card.id,
         x: clamp(bx + (i - count / 2) * 0.5, 0.5, ARENA_WIDTH - 0.5),
-        y: clamp(by, ARENA_HEIGHT * 0.4, ARENA_HEIGHT - 0.5),
+        y: clamp(by, RIVER_Y + RIVER_HALF_HEIGHT + 0.3, ARENA_HEIGHT - 0.5),
         hp: card.hp ?? 100,
         maxHp: card.hp ?? 100,
         damage: card.damage ?? 0,
         hitSpeed: card.hitSpeed ?? 1,
         range: card.range ?? 1.2,
         moveSpeed: card.moveSpeed ?? 1,
+        flying: card.flying ?? false,
         color: card.color,
         attackCd: 0,
       });
+    }
+  }
+
+  /**
+   * Move a raider unit toward the boss, crossing the river ONLY on a bridge
+   * (nearest one) — same two-stage routing + water clamp as the PvP sim, so
+   * ground troops never walk on water. Flyers ignore the river.
+   */
+  private moveUnitTowardBoss(u: BossUnit, dt: number): void {
+    let gx = BOSS_POS.x;
+    let gy = BOSS_POS.y;
+    let bridge: number | null = null;
+    if (!u.flying && crossesRiver(u.y, BOSS_POS.y)) {
+      bridge = BRIDGE_X.reduce((a, b) => (Math.abs(b - u.x) < Math.abs(a - u.x) ? b : a), BRIDGE_X[0]);
+      const ownBankY = u.y > RIVER_Y ? RIVER_Y + (RIVER_HALF_HEIGHT + 0.3) : RIVER_Y - (RIVER_HALF_HEIGHT + 0.3);
+      const farBankY = u.y > RIVER_Y ? RIVER_Y - (RIVER_HALF_HEIGHT + 0.3) : RIVER_Y + (RIVER_HALF_HEIGHT + 0.3);
+      gx = bridge;
+      // walk along your bank to the bridge head, then cross straight over the deck
+      gy = Math.abs(u.x - bridge) > 0.2 ? ownBankY : farBankY;
+    }
+    const d = dist(u.x, u.y, gx, gy);
+    const step = u.moveSpeed * dt;
+    if (d <= step || d === 0) {
+      u.x = gx;
+      u.y = gy;
+    } else {
+      u.x += ((gx - u.x) / d) * step;
+      u.y += ((gy - u.y) / d) * step;
+    }
+    // Hard rule: inside the river band a ground unit must stand on a bridge deck.
+    if (!u.flying && Math.abs(u.y - RIVER_Y) <= RIVER_HALF_HEIGHT + 0.05) {
+      if (bridge !== null) u.x = bridge; // stay on the deck while crossing
+      else u.y = u.y < RIVER_Y ? RIVER_Y - (RIVER_HALF_HEIGHT + 0.1) : RIVER_Y + (RIVER_HALF_HEIGHT + 0.1);
     }
   }
 
@@ -246,9 +289,7 @@ export class BossRoom {
           u.attackCd = u.hitSpeed;
         }
       } else if (u.moveSpeed > 0) {
-        const step = u.moveSpeed * TICK_DT;
-        u.x += ((BOSS_POS.x - u.x) / d) * step;
-        u.y += ((BOSS_POS.y - u.y) / d) * step;
+        this.moveUnitTowardBoss(u, TICK_DT);
       }
     }
 

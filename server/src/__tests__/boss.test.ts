@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BossRoom } from '../game/boss';
 import {
   DEFAULT_DECK, DEFAULT_TRIO, BOSS_BASE_HP, BOSS_RAIDER_COOLDOWN_MULT,
   COOLDOWN_BATTLE_CONFIG, getCard,
+  ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HALF_HEIGHT, BRIDGE_X,
+  type BossSnapshot, type ServerMessage,
 } from '@croyal/shared';
 
 const noop = () => {};
@@ -69,5 +71,33 @@ describe('boss raid cooldown economy', () => {
     room.leave('u2');
     expect(room.difficultyMultiplier).toBe(1);
     room.leave('u1');
+  });
+});
+
+describe('boss raid movement', () => {
+  it('a raider unit crosses the river on a bridge, never on water', () => {
+    vi.useFakeTimers();
+    const snaps: BossSnapshot[] = [];
+    const room = new BossRoom('clanMove', () => {}, COOLDOWN_BATTLE_CONFIG);
+    room.join('u1', 'Raider', ['footman', 'archers', 'bastion'],
+      (m: ServerMessage) => { if (m.t === 'boss') snaps.push(m.snapshot); });
+    // Deploy on the raider's own half (below the river), off-centre.
+    room.deploy('u1', 'footman', ARENA_WIDTH * 0.25, ARENA_HEIGHT - 4);
+    vi.advanceTimersByTime(14000); // enough ticks to march up to (and across) the river
+
+    let sawInBand = false;
+    for (const s of snaps) {
+      for (const e of s.entities) {
+        if (e.id === 'boss' || e.kind !== 'unit') continue;
+        if (Math.abs(e.y - RIVER_Y) <= RIVER_HALF_HEIGHT) {
+          sawInBand = true;
+          const onBridge = BRIDGE_X.some((bx) => Math.abs(e.x - bx) < 0.6);
+          expect(onBridge).toBe(true); // inside the river band => must be on a bridge deck
+        }
+      }
+    }
+    expect(sawInBand).toBe(true); // it actually reached/entered the river
+    room.leave('u1');
+    vi.useRealTimers();
   });
 });

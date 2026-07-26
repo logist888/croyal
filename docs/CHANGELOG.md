@@ -3,6 +3,20 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-25 — Boss raid: bridges + choose-your-spawn
+Fixes to the clan boss raid battlefield (reported: units walked on water; no
+control over where they spawn).
+- **No more water-walking** (`game/boss.ts`): raider units now route to the boss
+  across the **nearest bridge** (two-stage bank→deck crossing + a river-band clamp,
+  same rule as the PvP sim); flyers still cross anywhere. `BossUnit` gained a
+  `flying` flag.
+- **Choose the spawn** (`client/boss.ts`): in the cooldown model you now **arm a
+  troop card and tap your half** to place it (with the deploy-zone tint), instead
+  of auto-spawning on a fixed band. Spells still auto-aim the boss. Deploy is
+  gated to below the river (server clamps to the raider half too).
+- Tests → **216** (`boss.test.ts`: a raider unit stays on a bridge deck whenever
+  it's inside the river band).
+
 ## build-24 — Battle Pass (Этап 3)
 A seasonal free/premium reward track tied to the monthly season.
 - **Track** (`shared/battlepass.ts`): 20 tiers, each with a free and a premium

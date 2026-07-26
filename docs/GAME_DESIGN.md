@@ -215,6 +215,9 @@ only come from real ranked wins. State lives in `clans.war` and `users.war_rewar
 See [CLANS.md](CLANS.md). Clanmates fight a shared boss; **2+ simultaneous raiders
 double** the boss HP and damage. Raiders play on card cooldowns stretched **×1.5**.
 Each raider's contributed damage is tracked and shown on the result screen.
+Raiders **place troops on their own half** (tap to choose the spawn) and units
+march to the boss **across the nearest bridge** — ground troops never walk on
+water (flyers cross anywhere); spells auto-aim the boss.
 
 ## Reversibility — the alternate cores
 Per the GDD requirement, every battle core lives side-by-side behind two config
