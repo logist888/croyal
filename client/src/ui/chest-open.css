@@ -1,0 +1,87 @@
+/* The chest-opening sequence — see chest-open.ts for the beat order. */
+
+.chest-seq {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-5); padding: var(--s-7);
+  padding-bottom: calc(var(--s-7) + var(--sa-bottom));
+  overflow: hidden;
+}
+
+/* Darkens the room so the chest is the only thing on stage. The centre still
+   has to be near-opaque: at 0.55 the screen underneath stayed legible and the
+   reveal read as clutter rather than a moment. */
+.chest-seq-veil {
+  position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(65% 50% at 50% 42%, rgb(4 8 5 / 0.86), rgb(2 4 3 / 0.97));
+}
+
+/* The burst. Sits above everything and is only ever briefly visible. */
+.chest-seq-flash {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(38% 28% at 50% 42%, #fff, rgb(255 245 210 / 0.55) 55%, transparent 72%);
+}
+
+.chest-seq-stage {
+  position: relative; display: flex; flex-direction: column;
+  align-items: center; gap: var(--s-4);
+}
+
+.chest-seq-box {
+  width: 168px; height: 168px;
+  background-size: contain; background-repeat: no-repeat; background-position: center;
+  filter: drop-shadow(0 12px 18px rgb(0 0 0 / 0.6));
+  /* The shake rotates about the base, not the middle — it reads as weight. */
+  transform-origin: 50% 85%;
+}
+
+.chest-seq-title {
+  position: relative; margin: 0; opacity: 0; text-align: center;
+}
+
+.chest-seq-loot {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-5);
+}
+
+.chest-seq-cards {
+  display: flex; flex-wrap: wrap; gap: var(--s-5); justify-content: center;
+  max-width: 320px;
+}
+
+.chest-seq-card {
+  position: relative; width: 72px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-weight: 900; font-size: var(--fs-base);
+}
+
+/* Rarity ring that expands as a card lands. */
+.chest-seq-ring {
+  position: absolute; inset: 0; margin: auto;
+  width: 72px; height: 72px; border-radius: 50%;
+  border: 3px solid var(--accent); pointer-events: none;
+}
+
+.chest-seq-gold {
+  display: flex; align-items: center; gap: var(--s-2);
+  opacity: 0; font-size: var(--fs-3xl); font-weight: 900; color: var(--accent);
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.chest-seq-done { position: relative; min-width: 180px; }
+
+.chest-seq-skip {
+  position: absolute; left: 0; right: 0; bottom: calc(var(--s-5) + var(--sa-bottom));
+  text-align: center; font-size: var(--fs-md); color: var(--text-3);
+  pointer-events: none;
+}
+
+/* Loot only occupies space once the chest has burst. */
+.chest-seq .chest-seq-loot { display: none; }
+.chest-seq.is-open .chest-seq-loot { display: flex; }
+.chest-seq.is-open .chest-seq-stage { gap: 0; }
+
+/* Legendary gold shower. */
+.chest-seq-rain { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.chest-seq-rain i { position: absolute; top: 0; display: block; }

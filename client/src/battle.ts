@@ -20,6 +20,7 @@ import {
 } from './hud';
 import { beginCardDrag } from './deploy-drag';
 import { Icon } from './ui/primitives';
+import { fx, animate, prefersReducedMotion } from './ui/motion';
 import { haptic, onViewport } from './telegram';
 import { setPerfSource } from './dev/perf';
 import { t, reasonText, cardName } from './i18n';
@@ -350,12 +351,14 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
     // Friendly matches are pure practice — no ladder or economy lines.
     const economy = friendly
       ? `<div class="muted">${t('friendly.noRewards')}</div>`
-      : `<div>${t('battle.trophies', { delta: (result.trophyDelta >= 0 ? '+' : '') + result.trophyDelta })}</div>
-         <div class="row" style="gap:8px"><span class="badge">🪙 +${result.rewards.gold}</span></div>`;
+      : `<div class="res-trophies">${t('battle.trophies', { delta: '' })}
+           <b id="res-trophy-num" class="${result.trophyDelta < 0 ? 'is-loss' : 'is-gain'}">0</b></div>
+         <div class="row" style="gap:8px"><span class="badge">${Icon('gold', 13)} +${result.rewards.gold}</span></div>`;
+    node.className = 'screen result-screen';
     node.innerHTML = `
-      <h1>${win ? t('battle.victory') : t('battle.defeat')}</h1>
+      <h1 class="res-title">${win ? t('battle.victory') : t('battle.defeat')}</h1>
       <div class="card col" style="align-items:center">
-        <div style="font-size:26px; letter-spacing:6px">${crowns(result.yourScore)} <span class="muted" style="font-size:14px">vs</span> ${crowns(result.opponentScore)}</div>
+        <div class="res-crowns">${crowns(result.yourScore)} <span class="muted res-vs">vs</span> ${crowns(result.opponentScore)}</div>
         <div class="muted">${t('battle.reason', { reason: reasonText(result.reason) })}</div>
         ${economy}
       </div>
@@ -365,6 +368,63 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
     setUI(node, { screen: 'result' });
     node.querySelector<HTMLButtonElement>('#replay')?.addEventListener('click', () => { haptic('light'); nav.toReplay(); });
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => exit();
+    playResultSequence(node, { win, trophyDelta: friendly ? null : result.trophyDelta });
+  }
+
+  /**
+   * Stage the result rather than dumping it: title, then crowns one at a time,
+   * then the trophy delta counting, then the chest, then the buttons. Losing
+   * runs the same beats without the crown pops — a defeat should land quietly,
+   * not feel broken.
+   */
+  function playResultSequence(node: HTMLElement, o: { win: boolean; trophyDelta: number | null }): void {
+    const title = node.querySelector<HTMLElement>('.res-title');
+    const crownEls = [...node.querySelectorAll<HTMLElement>('.res-crowns .icon')];
+    const panel = node.querySelector<HTMLElement>('.card');
+    const chestArt = node.querySelector<HTMLElement>('.chest-img.big');
+    const buttons = [...node.querySelectorAll<HTMLElement>('button')];
+    const trophyNum = node.querySelector<HTMLElement>('#res-trophy-num');
+
+    if (prefersReducedMotion()) {
+      if (trophyNum && o.trophyDelta !== null) {
+        trophyNum.textContent = (o.trophyDelta >= 0 ? '+' : '') + o.trophyDelta;
+      }
+      return;
+    }
+
+    if (title) fx.pop(title, 1.16);
+    if (panel) fx.enter(panel, 0);
+
+    // Crowns land one by one, each with its own tick of haptic feedback.
+    crownEls.forEach((el, i) => {
+      el.style.opacity = '0';
+      setTimeout(() => {
+        animate(el, { opacity: [0, 1], scale: [2.1, 1], rotate: [-25, 0] },
+          { duration: 0.34, ease: [0.34, 1.56, 0.64, 1] });
+        haptic(o.win ? 'medium' : 'light');
+      }, 260 + i * 190);
+    });
+
+    const afterCrowns = 260 + crownEls.length * 190 + 120;
+
+    if (trophyNum && o.trophyDelta !== null) {
+      const d = o.trophyDelta;
+      setTimeout(() => {
+        fx.countTo(trophyNum, d, { from: 0, duration: 620, format: (n) => (n >= 0 ? '+' : '') + n });
+      }, afterCrowns);
+    }
+
+    // The earned chest drops in last — it is the thing you leave wanting to open.
+    if (chestArt) {
+      chestArt.style.opacity = '0';
+      setTimeout(() => {
+        animate(chestArt, { opacity: [0, 1], y: [-70, 0], scale: [0.7, 1] },
+          { duration: 0.55, ease: [0.34, 1.3, 0.64, 1] });
+        haptic('heavy');
+      }, afterCrowns + 420);
+    }
+
+    fx.stagger(buttons);
   }
 
   try {

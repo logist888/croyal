@@ -22,6 +22,7 @@ import { escapeHtml, hex, div } from './html';
 import { fx, prefersReducedMotion } from './ui/motion';
 import { hydrate, ProgressBar, toast, confirmSheet, Icon } from './ui/primitives';
 import { cardTile, cardTileHtml, setTileState } from './ui/card-tile';
+import { openChestSequence } from './ui/chest-open';
 
 /** Live countdown ticker for the hub chest bar (cleared on any screen change). */
 let chestTicker: ReturnType<typeof setInterval> | null = null;
@@ -463,22 +464,15 @@ async function openChestFlow(nav: Nav, chest: ChestSlot, withGems: boolean, repa
 }
 
 function showChestReward(chest: ChestSlot, rewards: { gold: number; cards: Record<string, number> }): void {
-  const overlay = div('modal-overlay');
-  const art = uiImageUrl(`chest_${chest.rarity}`);
-  const cardTiles = Object.entries(rewards.cards).map(([id, n]) =>
-    `<div class="reward"><div class="reward-card">${cardTileHtml({ cardId: id, size: 'xs', showCost: false })}</div><b>×${n}</b></div>`,
-  ).join('');
-  overlay.innerHTML = `
-    <div class="modal card col" style="align-items:center">
-      <h2>${escapeHtml(t(`chest.rarity.${chest.rarity}`))}</h2>
-      ${art ? `<div class="chest-img big" style="background-image:url(${art})"></div>` : ''}
-      <div class="row" style="gap:8px"><span class="badge">${Icon('gold', 13)} ${rewards.gold}</span></div>
-      <div class="reward-row">${cardTiles}</div>
-      <button id="x" class="accent">${t('common.back')}</button>`;
-  document.getElementById('ui')!.appendChild(overlay);
-  const close = () => overlay.remove();
-  overlay.querySelector<HTMLButtonElement>('#x')!.onclick = close;
-  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  // The whole reveal lives in ui/chest-open.ts — this used to be a static div
+  // that appeared with the loot already listed, for the game's single most
+  // important economy moment.
+  void openChestSequence({
+    rarityLabel: t(`chest.rarity.${chest.rarity}`),
+    chestArt: uiImageUrl(`chest_${chest.rarity}`),
+    rewards,
+    mount: document.getElementById('ui')!,
+  });
 }
 
 // --- Daily: login-streak reward + daily quests ---

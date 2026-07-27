@@ -9,6 +9,7 @@
 @import './ui/tokens.css';
 @import './ui/primitives.css';
 @import './ui/card-tile.css';
+@import './ui/chest-open.css';
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -470,3 +471,23 @@ input[type="text"]::placeholder { color: var(--c-gold-dim); }
 .lb-row.me { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 0 8px rgb(255 216 102 / 0.4); }
 .lb-rank { display: inline-block; min-width: 26px; text-align: center; font-weight: 900; color: var(--accent); }
 .lb-tr { font-weight: 900; white-space: nowrap; }
+
+/* ===== Battle result ===== */
+/* Staged reveal: title, crowns one at a time, trophies counting, then chest. */
+.result-screen .res-crowns {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-4xl);
+}
+.result-screen .res-vs { font-size: var(--fs-lg); }
+.result-screen .res-trophies {
+  display: flex; align-items: baseline; gap: var(--s-2);
+  font-size: var(--fs-xl); font-weight: 800;
+}
+.result-screen .res-trophies b {
+  font-size: var(--fs-3xl);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.55);
+}
+/* Lost trophies must not be painted in celebratory gold. */
+.result-screen .res-trophies b.is-gain { color: var(--accent); }
+.result-screen .res-trophies b.is-loss { color: var(--c-red-300); }
