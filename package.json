@@ -20,13 +20,15 @@
     "build": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client",
     "start": "npm run build --workspace client && npm run start --workspace server",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspace server && npm run test --workspace client"
+    "test": "npm run test --workspace server && npm run test --workspace client",
+    "art:webp": "node scripts/webp-art.mjs --prune"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
     "jimp": "^0.22.12",
+    "sharp": "^0.35.3",
     "undici": "^8.6.0"
   },
   "allowScripts": {

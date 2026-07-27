@@ -47,6 +47,8 @@ export interface CardTileOpts {
   className?: string;
   /** Extra attributes; values are escaped. */
   attrs?: Record<string, string>;
+  /** Defer loading the portrait until the tile is near the viewport. */
+  lazy?: boolean;
 }
 
 function rarityOf(cardId: string): Rarity {
@@ -66,9 +68,15 @@ export function cardTileHtml(o: CardTileOpts): string {
 
   // No art yet → keep the old coloured-gradient placeholder so the game still
   // reads while art is being added card by card.
-  const artStyle = art
-    ? `background-image:url('${art}')`
-    : `background:linear-gradient(180deg, ${hex(card.color)}, ${hex(shade(card.color, -0.3))})`;
+  //
+  // `lazy` defers the background-image to an IntersectionObserver (see
+  // observeLazyArt). The collection renders the full 80-card catalog, and
+  // fetching every portrait up front is ~2 MB the player mostly never scrolls to.
+  const placeholder = `background:linear-gradient(180deg, ${hex(card.color)}, ${hex(shade(card.color, -0.3))})`;
+  const artStyle = !art ? placeholder
+    : o.lazy ? placeholder
+    : `background-image:url('${art}')`;
+  const lazyAttr = art && o.lazy ? ` data-art="${escapeHtml(art)}"` : '';
 
   const attrs = Object.entries(o.attrs ?? {})
     .map(([k, v]) => ` ${k}="${escapeHtml(v)}"`).join('');
@@ -79,7 +87,7 @@ export function cardTileHtml(o: CardTileOpts): string {
   const hasFooter = !!o.footer && o.footer !== 'none';
   return `<div class="ct ct-${size}${hasFooter ? ' ct-has-footer' : ''}${o.className ? ' ' + o.className : ''}"`
     + ` data-rarity="${rarity}" data-state="${o.state ?? 'normal'}" data-card="${escapeHtml(o.cardId)}"${attrs}>`
-    + `<div class="ct-art" style="${artStyle}"></div>`
+    + `<div class="ct-art"${lazyAttr} style="${artStyle}"></div>`
     + (showName ? '<div class="ct-scrim"></div>' : '')
     + '<div class="ct-frame"></div>'
     + (rarity === 'legendary' ? '<div class="ct-shine"></div>' : '')
@@ -138,6 +146,35 @@ export function setTileCooldown(el: HTMLElement, remaining: number, total: numbe
   if (cooling !== wasCooling) el.dataset.state = cooling ? 'cooling' : 'normal';
   // true exactly on the cooling → ready edge, so the caller can pop it.
   return wasCooling && !cooling;
+}
+
+/**
+ * Load deferred portraits as they approach the viewport. Called once per grid;
+ * the observer disconnects itself when the container leaves the DOM.
+ */
+export function observeLazyArt(root: HTMLElement): void {
+  const pending = root.querySelectorAll<HTMLElement>('.ct-art[data-art]');
+  if (!pending.length) return;
+  if (!('IntersectionObserver' in window)) {
+    for (const el of pending) reveal(el);
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      reveal(e.target as HTMLElement);
+      io.unobserve(e.target);
+    }
+    if (!root.isConnected) io.disconnect();
+  }, { root: null, rootMargin: '300px 0px' });
+  for (const el of pending) io.observe(el);
+}
+
+function reveal(el: HTMLElement): void {
+  const url = el.dataset.art;
+  if (!url) return;
+  delete el.dataset.art;
+  el.style.backgroundImage = `url('${url}')`;
 }
 
 function shade(color: number, amt: number): number {

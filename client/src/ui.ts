@@ -21,7 +21,7 @@ import { cardImageUrl, uiImageUrl, asset } from './assets';
 import { escapeHtml, hex, div } from './html';
 import { fx, prefersReducedMotion } from './ui/motion';
 import { hydrate, ProgressBar, toast, confirmSheet, Icon } from './ui/primitives';
-import { cardTile, cardTileHtml, setTileState } from './ui/card-tile';
+import { cardTile, cardTileHtml, setTileState, observeLazyArt } from './ui/card-tile';
 import { openChestSequence } from './ui/chest-open';
 
 /** Live countdown ticker for the hub chest bar (cleared on any screen change). */
@@ -1079,6 +1079,7 @@ export async function renderCollection(nav: Nav): Promise<void> {
       size: 'md',
       state: locked ? 'locked' : 'normal',
       badges: ready ? ['upgrade'] : undefined,
+      lazy: true, // the full catalog is 80 portraits; most are below the fold
     })
       + `<div class="col-lvl">${t('col.level', { n: cs.level })}${ready ? ' ' + Icon('xp', 13) : ''}</div>`
       + ProgressBar.html({
@@ -1091,6 +1092,7 @@ export async function renderCollection(nav: Nav): Promise<void> {
     cell.onclick = () => openCardDetail(nav, id);
     grid.appendChild(cell);
   }
+  observeLazyArt(grid);
   fx.stagger([...grid.children]);
 }
 
