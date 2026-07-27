@@ -43,7 +43,7 @@ const EN: Dict = {
   'menu.yourDeck': 'Your deck',
   'menu.level': 'Lvl {n}',
   'menu.avgElixir': 'Avg elixir {v}',
-  'menu.toNext': '{n} 🏆 to {name}',
+  'menu.toNext': '{n}{trophy} to {name}',
   'menu.topLeague': 'Top league',
   'hud.max': 'Max {n}',
 
@@ -291,7 +291,7 @@ const RU: Dict = {
   'menu.yourDeck': 'Твоя колода',
   'menu.level': 'Ур. {n}',
   'menu.avgElixir': 'Ср. эликсир {v}',
-  'menu.toNext': '{n} 🏆 до «{name}»',
+  'menu.toNext': '{n}{trophy} до «{name}»',
   'menu.topLeague': 'Высшая лига',
   'hud.max': 'Макс. {n}',
 

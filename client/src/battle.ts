@@ -19,6 +19,7 @@ import {
   nextCardHtml, setNextCard, type HandUI, type TrioUI,
 } from './hud';
 import { beginCardDrag } from './deploy-drag';
+import { Icon } from './ui/primitives';
 import { haptic, onViewport } from './telegram';
 import { setPerfSource } from './dev/perf';
 import { t, reasonText, cardName } from './i18n';
@@ -176,7 +177,7 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
       <div class="hud-top">
         <button id="leave" class="danger" style="padding:6px 10px">✕</button>
         <span class="vs-name" title="${escapeHtml(opponentName)}">${escapeHtml(opponentName || '—')}</span>
-        <span id="score" class="chip score">👑 0 — 0</span>
+        <span id="score" class="chip score">${Icon('crown', 15)} 0 — 0</span>
         <span id="timer" class="chip timer">${fmtTime(roundSeconds)}</span>
       </div>
       <div id="arena" class="arena-host"></div>
@@ -314,7 +315,7 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
     const score = root.querySelector<HTMLSpanElement>('#score');
     if (score) {
       const enemy = yourSide === 'A' ? 'B' : 'A';
-      score.textContent = `👑 ${snap.score[yourSide]} — ${snap.score[enemy]} 👑`;
+      score.innerHTML = `${Icon('crown', 15)} ${snap.score[yourSide]} — ${snap.score[enemy]} ${Icon('crown', 15)}`;
     }
   }
 
@@ -324,7 +325,10 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
     node.className = 'screen';
     const win = result.outcome === 'win';
     haptic(win ? 'success' : 'error');
-    const crowns = (n: number) => '👑'.repeat(n) + '·'.repeat(Math.max(0, 3 - n));
+    // Won crowns use the real crest; the rest stay as dim placeholders so the
+    // row keeps its width and you can read "2 of 3" at a glance.
+    const crowns = (n: number) => Icon('crown', 26).repeat(n)
+      + `<span class="crown-empty">${'·'.repeat(Math.max(0, 3 - n))}</span>`;
 
     // A win earns a chest into a hub slot (its cards are claimed there). Slots
     // full on a win => a nudge to go open one. Losses earn no chest.

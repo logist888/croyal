@@ -123,8 +123,11 @@
   --r-pill: 999px;
 
   /* ---- type ---- */
-  --ff-display: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
-  --ff-body: var(--tg-theme-font, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif);
+  /* Rubik is self-hosted (scripts/fetch-fonts.mjs) as one variable cut spanning
+     500-900, and covers Cyrillic — Fredoka, the obvious game-font pick, has no
+     Cyrillic subset at all and cannot render Russian. */
+  --ff-display: Rubik, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --ff-body: Rubik, var(--tg-theme-font, "Segoe UI"), system-ui, -apple-system, Roboto, sans-serif;
   --fs-2xs: 9px; --fs-xs: 10px; --fs-sm: 11px; --fs-md: 12px; --fs-base: 13px;
   --fs-lg: 14px; --fs-xl: 16px; --fs-2xl: 19px; --fs-3xl: 22px; --fs-4xl: 26px;
   --lh-tight: 1.1; --lh-normal: 1.5;

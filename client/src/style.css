@@ -47,15 +47,39 @@ html, body {
 #ui { position: relative; }
 #ui > .is-leaving { position: absolute; inset: 0; pointer-events: none; }
 
+/*
+ * Headings get the arena-game treatment: a gold gradient fill, a dark rim and a
+ * hard bottom shadow. `paint-order: stroke fill` is what makes it read as a game
+ * font instead of a smudge — without it the stroke is painted over the glyph and
+ * eats the counters. Supported in every current mobile WebView.
+ */
 h1, h2 {
   margin: var(--s-2) 0;
+  font-family: var(--ff-display);
   font-weight: 900;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  text-shadow: 0 2px 0 rgb(0 0 0 / 0.55), 0 0 6px rgb(0 0 0 / 0.35);
+  background: linear-gradient(180deg, var(--c-gold-200) 10%, var(--accent) 45%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 3px var(--c-wood-900);
+  paint-order: stroke fill;
+  filter:
+    drop-shadow(0 2px 0 var(--c-wood-900))
+    drop-shadow(0 4px 5px rgb(0 0 0 / 0.45));
 }
 h1 { font-size: var(--fs-4xl); }
-h2 { font-size: var(--fs-2xl); }
+h2 { font-size: var(--fs-2xl); -webkit-text-stroke-width: 2.5px; }
+
+/* Where a heading sits on a wood panel, the rim would disappear into it. */
+.card h2 { -webkit-text-stroke-width: 2px; }
+
+/* Numbers should never reflow as they tick (counters, timers, HP). */
+.chip, .cur, .stat b, .elixir-num, .lb-tr, .friendly-code, .col-lvl, .bp-tier {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
 .muted { color: var(--text-2); font-size: var(--fs-lg); }
 
 /* Wood panel */
@@ -294,11 +318,24 @@ input[type="text"]::placeholder { color: var(--c-gold-dim); }
 .pname { font-weight: 900; font-size: var(--fs-xl); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
 .plvl { font-size: var(--fs-md); color: var(--accent); font-weight: 800; }
 .currencies { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: flex-end; }
-.cur { background: rgb(0 0 0 / 0.4); border: 1px solid rgb(255 255 255 / 0.14); border-radius: 9px; padding: 3px var(--s-3); font-weight: 800; font-size: var(--fs-base); white-space: nowrap; }
+.cur {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  background: rgb(0 0 0 / 0.4); border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 9px; padding: 3px var(--s-3);
+  font-weight: 800; font-size: var(--fs-base); white-space: nowrap;
+}
+/* Won crowns are real art; the remainder stays as dim dots so the row keeps a
+   stable width and reads as "2 of 3". */
+.crown-empty { color: rgb(255 255 255 / 0.28); }
 
 .league { padding: var(--s-5) var(--s-6); }
-.league-bar { height: 10px; border-radius: var(--s-2); background: var(--c-wood-975); border: 1px solid var(--border); overflow: hidden; margin: 7px 0; }
-.league-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.league-bar { margin: 7px 0; }
+.bar-league .bar-fill { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+/* League crest + name. badge_1..10 shipped with the art but were never used,
+   so leagues had a name and nothing else to recognise them by. */
+.league-title { gap: var(--s-3); min-width: 0; }
+.league-title b { font-size: var(--fs-xl); }
+.league-title .icon { filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.55)); }
 
 .big-battle { font-size: var(--fs-3xl); padding: 18px; }
 

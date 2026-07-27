@@ -20,7 +20,7 @@ import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from '
 import { cardImageUrl, uiImageUrl, asset } from './assets';
 import { escapeHtml, hex, div } from './html';
 import { fx, prefersReducedMotion } from './ui/motion';
-import { hydrate, ProgressBar, toast, confirmSheet } from './ui/primitives';
+import { hydrate, ProgressBar, toast, confirmSheet, Icon } from './ui/primitives';
 import { cardTile, cardTileHtml, setTileState } from './ui/card-tile';
 
 /** Live countdown ticker for the hub chest bar (cleared on any screen change). */
@@ -105,6 +105,35 @@ export function setGameVisible(visible: boolean): void {
 // escapeHtml/hex/div live in html.ts so ui/primitives.ts can use them without
 // importing this module back. Re-exported here for the existing call sites.
 export { escapeHtml, hex } from './html';
+
+/**
+ * Currency values as last painted in the hub. Returning from a battle, a chest
+ * or a purchase re-renders the hub, and we tween from the old number to the new
+ * one instead of swapping it — a reward you can watch land reads as a reward.
+ */
+let lastCurrencies: { trophies: number; gold: number; gems: number } | null = null;
+
+/** Tween the hub's three currency readouts toward the profile's current values. */
+function animateCurrencies(node: HTMLElement, to: { trophies: number; gold: number; gems: number }): void {
+  const from = lastCurrencies;
+  lastCurrencies = { ...to };
+  if (!from) return; // first paint of the session — nothing to count up from
+  for (const key of ['trophies', 'gold', 'gems'] as const) {
+    if (from[key] === to[key]) continue;
+    const el = node.querySelector<HTMLElement>(`#cur-${key}`);
+    if (!el) continue;
+    fx.countTo(el, to[key], { from: from[key] });
+    fx.pop(el.parentElement ?? el, to[key] > from[key] ? 1.18 : 1.06);
+  }
+}
+
+/**
+ * League crest for a league index. `badge_1..10` shipped with the art but were
+ * never wired up, so leagues had no visual identity at all — only a name.
+ */
+function leagueBadge(index: number): string {
+  return `badge_${Math.min(LEAGUES.length, Math.max(1, index + 1))}`;
+}
 
 /** Localized league name where the given card unlocks. */
 function unlockLeagueName(cardId: string): string {
@@ -235,22 +264,25 @@ export function renderMenu(nav: Nav): void {
         </div>
       </div>
       <div class="currencies">
-        <span class="cur">🏆 ${p.trophies}</span>
-        <span class="cur">🪙 ${p.gold}</span>
-        <span class="cur">💎 ${p.gems}</span>
+        <span class="cur">${Icon('trophy', 15)}<b id="cur-trophies">${p.trophies}</b></span>
+        <span class="cur">${Icon('gold', 15)}<b id="cur-gold">${p.gold}</b></span>
+        <span class="cur">${Icon('gem', 15)}<b id="cur-gems">${p.gems}</b></span>
       </div>
     </div>
 
     <div class="league card">
       <div class="row space-between">
-        <b>🏟 ${escapeHtml(leagueName)}</b>
+        <div class="row league-title">
+          ${Icon(leagueBadge(index), 34)}
+          <b>${escapeHtml(leagueName)}</b>
+        </div>
         <span class="muted">${p.wins}W / ${p.losses}L</span>
       </div>
-      <div class="league-bar"><div class="league-fill" style="width:${pct}%"></div></div>
+      ${ProgressBar.html({ kind: 'league', value: pct / 100, height: 10, className: 'league-bar' })}
       <div class="muted">${nextMin !== null
-        ? t('menu.toNext', { n: Math.max(0, nextMin - p.trophies), name: nextName })
+        ? t('menu.toNext', { n: Math.max(0, nextMin - p.trophies), trophy: Icon('trophy', 14), name: nextName })
         : t('menu.topLeague')}</div>
-      <div class="muted season-line">🗓 ${t('season.endsIn', { time: fmtSeasonTime(seasonRemainingMs(Date.now())) })}</div>
+      <div class="muted season-line">${Icon('timer', 12)} ${t('season.endsIn', { time: fmtSeasonTime(seasonRemainingMs(Date.now())) })}</div>
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
@@ -288,6 +320,7 @@ export function renderMenu(nav: Nav): void {
     </div>
   `;
   setUI(node, { screen: 'menu' });
+  animateCurrencies(node, { trophies: p.trophies, gold: p.gold, gems: p.gems });
 
   renderChestBar(node.querySelector<HTMLDivElement>('#chest-bar')!, nav);
 
@@ -339,8 +372,8 @@ function showSeasonReward(reward: SeasonReward, nav: Nav): void {
       <div class="season-league">🏟 ${escapeHtml(seasonLeagueName(reward.league, lang === 'ru'))}</div>
       <div class="muted">${t('season.reached')}</div>
       <div class="row" style="gap:10px;margin:6px 0">
-        ${reward.gold ? `<span class="badge">🪙 ${reward.gold}</span>` : ''}
-        ${reward.gems ? `<span class="badge">💎 ${reward.gems}</span>` : ''}
+        ${reward.gold ? `<span class="badge">${Icon('gold', 13)} ${reward.gold}</span>` : ''}
+        ${reward.gems ? `<span class="badge">${Icon('gem', 13)} ${reward.gems}</span>` : ''}
       </div>
       <button id="claim-season" class="accent">${t('season.claim')}</button>`;
   document.getElementById('ui')!.appendChild(overlay);
@@ -399,7 +432,7 @@ function renderChestBar(bar: HTMLDivElement, nav: Nav): void {
       } else if (st === 'unlocking') {
         const cost = gemsToSkip(chest, now);
         cell.innerHTML = `${img}<div class="chest-cap chest-time">${fmtChestTime(chestRemainingMs(chest, now))}</div>
-          <button class="chest-act accent">💎 ${cost}</button>`;
+          <button class="chest-act accent">${Icon('gem', 12)} ${cost}</button>`;
         cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = () => openChestFlow(nav, chest, true, paint);
       } else {
         cell.innerHTML = `${img}<div class="chest-cap chest-ready">${t('chest.open')}</div>
@@ -439,7 +472,7 @@ function showChestReward(chest: ChestSlot, rewards: { gold: number; cards: Recor
     <div class="modal card col" style="align-items:center">
       <h2>${escapeHtml(t(`chest.rarity.${chest.rarity}`))}</h2>
       ${art ? `<div class="chest-img big" style="background-image:url(${art})"></div>` : ''}
-      <div class="row" style="gap:8px"><span class="badge">🪙 ${rewards.gold}</span></div>
+      <div class="row" style="gap:8px"><span class="badge">${Icon('gold', 13)} ${rewards.gold}</span></div>
       <div class="reward-row">${cardTiles}</div>
       <button id="x" class="accent">${t('common.back')}</button>`;
   document.getElementById('ui')!.appendChild(overlay);
@@ -452,8 +485,8 @@ function showChestReward(chest: ChestSlot, rewards: { gold: number; cards: Recor
 
 function rewardText(gold: number, gems: number): string {
   const parts: string[] = [];
-  if (gold) parts.push(`🪙 ${gold}`);
-  if (gems) parts.push(`💎 ${gems}`);
+  if (gold) parts.push(`${Icon('gold', 13)} ${gold}`);
+  if (gems) parts.push(`${Icon('gem', 13)} ${gems}`);
   return parts.join('  ') || '—';
 }
 
@@ -554,7 +587,9 @@ export async function renderLeaderboard(nav: Nav): Promise<void> {
   const tabP = node.querySelector<HTMLButtonElement>('#tab-players')!;
   const tabC = node.querySelector<HTMLButtonElement>('#tab-clans')!;
 
-  const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`);
+  const medal = (rank: number) => (rank <= 3
+    ? Icon(['medal_gold', 'medal_silver', 'medal_bronze'][rank - 1], 22)
+    : `${rank}`);
 
   const showPlayers = async () => {
     tabP.className = 'grow active'; tabC.className = 'secondary grow';
@@ -564,11 +599,11 @@ export async function renderLeaderboard(nav: Nav): Promise<void> {
       const rows = top.map((e) => `
         <div class="list-item lb-row ${e.userId === meId ? 'me' : ''}">
           <div class="row" style="gap:10px"><span class="lb-rank">${medal(e.rank)}</span><b>${escapeHtml(e.nickname)}</b></div>
-          <span class="lb-tr">🏆 ${e.trophies}</span>
+          <span class="lb-tr">${Icon('trophy', 14)}${e.trophies}</span>
         </div>`).join('');
       const youRow = you && !top.some((e) => e.userId === meId)
         ? `<div class="muted" style="margin-top:6px">${t('lb.yourRank')}</div>
-           <div class="list-item lb-row me"><div class="row" style="gap:10px"><span class="lb-rank">${medal(you.rank)}</span><b>${escapeHtml(you.nickname)}</b></div><span class="lb-tr">🏆 ${you.trophies}</span></div>`
+           <div class="list-item lb-row me"><div class="row" style="gap:10px"><span class="lb-rank">${medal(you.rank)}</span><b>${escapeHtml(you.nickname)}</b></div><span class="lb-tr">${Icon('trophy', 14)}${you.trophies}</span></div>`
         : '';
       body.innerHTML = (rows || `<div class="muted">${t('lb.empty')}</div>`) + youRow;
     } catch (e) { body.innerHTML = `<div class="error">${escapeHtml((e as Error).message)}</div>`; }
@@ -583,7 +618,7 @@ export async function renderLeaderboard(nav: Nav): Promise<void> {
         <div class="list-item lb-row">
           <div class="row" style="gap:10px"><span class="lb-rank">${medal(e.rank)}</span>
             <div><b>${escapeHtml(e.name)}</b><div class="muted">${t('clans.members', { n: e.memberCount })}</div></div></div>
-          <span class="lb-tr">🏆 ${e.trophies}</span>
+          <span class="lb-tr">${Icon('trophy', 14)}${e.trophies}</span>
         </div>`).join('') || `<div class="muted">${t('lb.empty')}</div>`;
     } catch (e) { body.innerHTML = `<div class="error">${escapeHtml((e as Error).message)}</div>`; }
   };
@@ -608,7 +643,9 @@ export async function renderWar(nav: Nav): Promise<void> {
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const body = node.querySelector<HTMLDivElement>('#war-body')!;
 
-  const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`);
+  const medal = (rank: number) => (rank <= 3
+    ? Icon(['medal_gold', 'medal_silver', 'medal_bronze'][rank - 1], 22)
+    : `${rank}`);
 
   const paint = (w: ClanWarInfo) => {
     const rew = w.reward
@@ -631,7 +668,7 @@ export async function renderWar(nav: Nav): Promise<void> {
     body.innerHTML = `
       ${rew}
       <div class="card col">
-        <div class="row space-between"><b>⚔️ ${t('war.thisWeek')}</b><span class="muted">🗓 ${fmtSeasonTime(w.remainingMs)}</span></div>
+        <div class="row space-between"><b>⚔️ ${t('war.thisWeek')}</b><span class="muted">${Icon('timer', 12)} ${fmtSeasonTime(w.remainingMs)}</span></div>
         <div class="row space-between"><span class="muted">${t('war.clanScore')}</span><b>${w.clanScore} · ${t('war.tier', { n: w.tier })}</b></div>
         <div class="row space-between"><span class="muted">${t('war.yourContribution')}</span><b>${w.yourContribution}</b></div>
       </div>
@@ -830,7 +867,7 @@ export async function renderBattlePass(nav: Nav): Promise<void> {
       const premClaimed = bp?.claimedPremium.includes(tr.tier);
       const cell = (label: string, on: boolean, claimed: boolean | undefined, locked: boolean) =>
         `<div class="bp-cell ${on ? 'bp-open' : 'bp-locked'} ${claimed ? 'bp-claimed' : ''}">
-           ${locked ? '🔒 ' : ''}${label}${claimed ? ' ✓' : ''}</div>`;
+           ${locked ? Icon('lock', 13) + ' ' : ''}${label}${claimed ? ' ✓' : ''}</div>`;
       return `
         <div class="bp-row ${reached ? 'bp-reached' : ''}">
           <div class="bp-tier">${tr.tier}</div>
@@ -841,7 +878,7 @@ export async function renderBattlePass(nav: Nav): Promise<void> {
 
     body.innerHTML = `
       <div class="card col">
-        <div class="row space-between"><b>${t('pass.tier', { n: tier })}</b><span class="muted">🗓 ${fmtSeasonTime(seasonRemainingMs(Date.now()))}</span></div>
+        <div class="row space-between"><b>${t('pass.tier', { n: tier })}</b><span class="muted">${Icon('timer', 12)} ${fmtSeasonTime(seasonRemainingMs(Date.now()))}</span></div>
         <div class="league-bar"><div class="league-fill" style="width:${pct}%"></div></div>
         <div class="muted">${t('pass.xp', { into: prog.into, need: prog.need })}</div>
       </div>
@@ -909,7 +946,7 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
       <button id="back" class="secondary">${t('common.back')}</button>
     </div>
     <div class="muted">${t('trio.hint')}</div>
-    <div class="collection" id="grid"></div>
+    <div class="collection" id="grid" data-stagger></div>
     <div class="pair-hint muted" id="pair-hint"></div>
     <div class="error" id="err"></div>
     <button id="save" class="accent">${t('trio.save')} (${selected.size}/${TRIO_SIZE})</button>
@@ -988,6 +1025,8 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
     cells.set(id, cell);
     grid.appendChild(cell);
   }
+  // hydrate() staggers on mount, but these grids are filled after setUI runs.
+  fx.stagger([...grid.children]);
   refreshSave();
 
   save.onclick = async () => {
@@ -1022,7 +1061,7 @@ export async function renderCollection(nav: Nav): Promise<void> {
       <div><b>🃏 ${t('menu.level', { n: levelFromXp(p.xp) })}</b></div>
       <div class="muted">🪙 ${p.gold}</div>
     </div>
-    <div class="collection" id="grid"></div>
+    <div class="collection" id="grid" data-stagger></div>
   `;
   setUI(node, { screen: 'collection' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
@@ -1047,7 +1086,7 @@ export async function renderCollection(nav: Nav): Promise<void> {
       state: locked ? 'locked' : 'normal',
       badges: ready ? ['upgrade'] : undefined,
     })
-      + `<div class="col-lvl">${t('col.level', { n: cs.level })}${ready ? ' <span class="up-dot">⬆</span>' : ''}</div>`
+      + `<div class="col-lvl">${t('col.level', { n: cs.level })}${ready ? ' ' + Icon('xp', 13) : ''}</div>`
       + ProgressBar.html({
         kind: 'xp', height: 6,
         value: cs.count / (need === Infinity ? cs.count || 1 : need),
@@ -1058,6 +1097,7 @@ export async function renderCollection(nav: Nav): Promise<void> {
     cell.onclick = () => openCardDetail(nav, id);
     grid.appendChild(cell);
   }
+  fx.stagger([...grid.children]);
 }
 
 function openCardDetail(nav: Nav, id: string): void {
@@ -1082,10 +1122,10 @@ function openCardDetail(nav: Nav, id: string): void {
       <div class="row" style="gap:8px">
         <span class="badge" style="background:${hex(RARITY_COLOR[c.rarity])}">${rarityText(c.rarity)}</span>
         <span class="badge" style="background:#455a64;color:#fff">${roleText(c.role)}</span>
-        <span class="badge">${state.mode.economy === 'cooldown' ? `⏳ ${c.cooldownSec}s` : `💧 ${c.cost}`}</span>
+        <span class="badge">${state.mode.economy === 'cooldown' ? `${Icon('timer', 13)} ${c.cooldownSec}s` : `${Icon('elixir', 13)} ${c.cost}`}</span>
         <span class="badge">${t('col.level', { n: cs.level })}</span>
       </div>
-      ${isCardUnlocked(id, p.trophies) ? '' : `<div class="col-unlock">🔒 ${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>`}
+      ${isCardUnlocked(id, p.trophies) ? '' : `<div class="col-unlock">${Icon('lock', 13)} ${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>`}
       <div class="col" style="gap:4px">
         ${c.type === 'spell'
           ? statLine(t('card.spellDmg'), stats.spellDamage)
