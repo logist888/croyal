@@ -117,11 +117,9 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
 
   function onSnapshot(snap: BossSnapshot) {
     field?.render(snap.entities, snap.tick);
-    // NOTE: raids get spawn pops, gait, hit flashes, damage numbers and death
-    // topples (all derived client-side from the snapshot), but no projectile or
-    // impact effects: the boss loop is bespoke and never emits AttackEvents, so
-    // BossSnapshot has no `events` field to forward. Adding those needs a
-    // server-side change to server/src/game/boss.ts.
+    // Raids now carry combat FX like 1v1 does. `events` is optional on the wire,
+    // so an older server simply sends nothing and the field stays quiet.
+    if (snap.events?.length) field?.addEvents(snap.events);
     if (cooldownMode) {
       trio?.setCooldowns(snap.cooldowns ?? []);
     } else {

@@ -10,7 +10,7 @@ import {
   BOSS_RAID_SECONDS, BOSS_BASE_HP, BOSS_BASE_DAMAGE, BOSS_COOP_MULTIPLIER, BOSS_MAX_PLAYERS,
   BOSS_RAIDER_COOLDOWN_MULT,
   getCard, type ServerMessage, type BossSnapshot, type EntitySnapshot, type BossResult,
-  type BattleConfig, type CardCooldown,
+  type BattleConfig, type CardCooldown, type AttackEvent,
 } from '@croyal/shared';
 import { ACTIVE_BATTLE_CONFIG } from './active-config';
 
@@ -51,6 +51,8 @@ function crossesRiver(y1: number, y2: number): boolean {
 
 const BOSS_POS = { x: ARENA_WIDTH / 2, y: 4 };
 const BOSS_RANGE = 3.5;
+/** Same cap the 1v1 simulation uses — a phone cannot express more than this. */
+const MAX_EVENTS_PER_WINDOW = 60;
 const BOSS_HIT_SPEED = 1.2;
 
 export class BossRoom {
@@ -120,6 +122,20 @@ export class BossRoom {
     this.recomputeDifficulty(); // dropping to solo drops the co-op multiplier too
   }
 
+  /**
+   * Combat FX for the current broadcast window. The raid loop never produced
+   * these, which is why boss fights had no projectiles, impacts or spell rings
+   * while 1v1 did. Lifecycle copies Simulation exactly: pushed during the tick,
+   * read by snapshotFor (which runs once PER PARTICIPANT), cleared once after
+   * the broadcast — clearing inside the snapshot would give the FX to whichever
+   * raider happened to be serialised first and nobody else.
+   */
+  private events: AttackEvent[] = [];
+
+  private pushEvent(ev: AttackEvent): void {
+    if (this.events.length < MAX_EVENTS_PER_WINDOW) this.events.push(ev);
+  }
+
   /** Co-op (2+) doubles boss HP and damage; difficulty is recomputed live. */
   private recomputeDifficulty(): void {
     const mult = this.participants.size >= 2 ? BOSS_COOP_MULTIPLIER : 1;
@@ -187,6 +203,14 @@ export class BossRoom {
           dmg += card.effect.magnitude * card.effect.zoneSeconds;
         }
         this.damageBoss(Math.round(dmg), p);
+        this.pushEvent({
+          kind: 'spell', side: 'A',
+          fromX: round2(sx), fromY: round2(sy),
+          toX: BOSS_POS.x, toY: BOSS_POS.y,
+          ranged: false,
+          radius: card.spellRadius ?? 1,
+          effect: card.effect?.kind === 'chain' ? 'chain' : undefined,
+        });
       }
       return;
     }
@@ -287,6 +311,12 @@ export class BossRoom {
           const owner = owners.get(u.ownerId);
           if (owner) this.damageBoss(u.damage, owner);
           u.attackCd = u.hitSpeed;
+          this.pushEvent({
+            kind: 'attack', side: 'A',
+            fromX: round2(u.x), fromY: round2(u.y),
+            toX: BOSS_POS.x, toY: BOSS_POS.y,
+            ranged: u.range > 1.5,
+          });
         }
       } else if (u.moveSpeed > 0) {
         this.moveUnitTowardBoss(u, TICK_DT);
@@ -296,10 +326,22 @@ export class BossRoom {
     // boss AoE attack
     this.bossAttackCd -= TICK_DT;
     if (this.bossAttackCd <= 0) {
+      let struck = false;
       for (const u of this.units) {
         if (u.hp > 0 && dist(u.x, u.y, BOSS_POS.x, BOSS_POS.y) <= BOSS_RANGE) {
           u.hp -= this.bossDamage;
+          struck = true;
         }
+      }
+      // One slam, not one event per victim: the boss hits an area, and N
+      // identical events would just burn the per-window cap.
+      if (struck) {
+        this.pushEvent({
+          kind: 'spell', side: 'B',
+          fromX: BOSS_POS.x, fromY: BOSS_POS.y,
+          toX: BOSS_POS.x, toY: BOSS_POS.y,
+          ranged: false, radius: BOSS_RANGE,
+        });
       }
       this.bossAttackCd = BOSS_HIT_SPEED;
     }
@@ -334,6 +376,7 @@ export class BossRoom {
       participants: [...this.participants.values()].map((x) => ({
         userId: x.userId, nickname: x.nickname, damageDealt: Math.round(x.damageDealt),
       })),
+      events: this.events.length ? [...this.events] : undefined,
       yourElixir: round2(p.elixir),
       hand: this.handOf(p),
       nextCard: this.config.economy === 'cooldown' ? '' : p.queue[4],
@@ -352,6 +395,9 @@ export class BossRoom {
     for (const p of this.participants.values()) {
       p.send({ t: 'boss', snapshot: this.snapshotFor(p) });
     }
+    // Cleared only after every participant has been served — see the note on
+    // `events` above.
+    this.events.length = 0;
   }
 
   private finish(outcome: 'win' | 'loss'): void {

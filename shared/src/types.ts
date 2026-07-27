@@ -227,6 +227,12 @@ export interface BossSnapshot {
   yourElixir: number;
   hand: string[];
   nextCard: string;
+  /**
+   * Combat FX for the window since the last snapshot. Optional so an older
+   * client simply renders nothing extra (the wire-compat contract the status
+   * tests pin down).
+   */
+  events?: AttackEvent[];
   // --- Cooldown model additions ---
   mode?: BattleModeInfo;
   cooldowns?: CardCooldown[];
