@@ -6,7 +6,7 @@ import {
   getCard, NICKNAME_REGEX, NICKNAME_MIN, NICKNAME_MAX,
   leagueForTrophies, levelFromXp, averageElixir, averageCooldown, RARITY_COLOR, LEAGUES,
   MAX_CARD_LEVEL, cardsToUpgrade, goldToUpgrade, scaledStats, TRIO_SIZE, ALL_CARD_IDS,
-  pairFor, isCardUnlocked, unlockLeagueIndex,
+  pairFor, isCardUnlocked, unlockLeagueIndex, arenaForTrophies,
   CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
   hasDailyRewards, loginReward, questClaimable, DAILY_REWARDS,
   seasonRemainingMs, leagueName as seasonLeagueName, GOLD_PACKS, GEM_PACKS,
@@ -17,7 +17,7 @@ import { api, type ClanWarInfo, type BattlePassInfo } from './net';
 import { state } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
-import { cardImageUrl, uiImageUrl, asset } from './assets';
+import { cardImageUrl, uiImageUrl, asset, arenaImageUrl } from './assets';
 import { escapeHtml, hex, div } from './html';
 import { fx, prefersReducedMotion } from './ui/motion';
 import { hydrate, ProgressBar, toast, confirmSheet, Icon, openModal } from './ui/primitives';
@@ -261,7 +261,99 @@ export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?
   };
 }
 
-// --- Main menu (hub: top bar + league band + battle + nav + deck) ---
+
+/**
+ * A sky wash per league, aligned 1:1 with LEAGUES. This is what stops the stage
+ * looking like a cropped screenshot: the arena band supplies architecture, the
+ * wash supplies time of day.
+ */
+const LEAGUE_SKY = [
+  'rgb(122 92 40 / 0.50)',   // Training Camp — dusty afternoon
+  'rgb(96 128 52 / 0.48)',   // Forest Clearing — green noon
+  'rgb(104 104 112 / 0.50)', // Stone Fort — overcast
+  'rgb(160 72 28 / 0.52)',   // Fire Forge — ember
+  'rgb(96 148 178 / 0.50)',  // Frost Peak — cold blue
+  'rgb(70 78 128 / 0.54)',   // Storm Arena — thunder
+  'rgb(150 110 40 / 0.52)',  // Royal Arena — gold hour
+  'rgb(108 78 156 / 0.54)',  // Legend League — violet dusk
+];
+
+// --- Main menu (the hub: rail, stage, activity strip, chests, CTA) ---
+
+/** One row of the activity strip. Ranked by urgency; only real data sources. */
+interface Activity {
+  id: string;
+  /** Where this tile goes. Only the highest-scoring tile per destination shows —
+      otherwise a claimable Daily and its idle floor card both make the cut and
+      the strip shows the same thing twice. */
+  dest: string;
+  score: number;
+  icon: string;
+  title: string;
+  sub: string;
+  cta?: string;
+  claim: boolean;
+  go: () => void;
+}
+
+/**
+ * What the player can act on right now, most urgent first.
+ *
+ * Only sources that actually exist on PlayerProfile are here. Tournament,
+ * replay and shop-offer tiles wait until the server exposes their state — a
+ * tile that cannot know whether it is claimable is just a button.
+ *
+ * A floor card guarantees the strip is never empty, so the rest state is still
+ * a composition rather than a hole.
+ */
+function hubActivities(nav: Nav, p: NonNullable<typeof state.profile>): Activity[] {
+  const out: Activity[] = [];
+
+  if (p.daily && hasDailyRewards(p.daily)) {
+    out.push({
+      id: 'daily', dest: 'daily', score: 100, icon: Icon('star', 52),
+      title: t('hub.dailyTitle'), sub: t('hub.dailyReady'),
+      cta: t('hub.collect'), claim: true, go: () => nav.toDaily(),
+    });
+  }
+  if (hasBattlePassRewards(p.battlePass)) {
+    out.push({
+      id: 'pass', dest: 'pass', score: 96, icon: Icon('xp', 52),
+      title: t('events.pass'), sub: t('hub.passReady'),
+      cta: t('hub.collect'), claim: true, go: () => nav.toBattlePass(),
+    });
+  }
+  if (p.warReward) {
+    out.push({
+      id: 'war', dest: 'war', score: 92, icon: Icon('clan_badge', 52),
+      title: t('hub.warTitle'), sub: t('hub.warReady'),
+      cta: t('hub.collect'), claim: true, go: () => nav.toWar(),
+    });
+  }
+  if (p.clanId) {
+    out.push({
+      id: 'warOpen', dest: 'war', score: 50, icon: Icon('clan_badge', 52),
+      title: t('hub.warTitle'), sub: t('hub.warOpen'), claim: false, go: () => nav.toWar(),
+    });
+  }
+  // Floor cards — always available, so the strip always has two tiles.
+  out.push({
+    id: 'dailyIdle', dest: 'daily', score: 12, icon: Icon('star', 52),
+    title: t('hub.dailyTitle'), sub: t('hub.dailyIdle'), claim: false, go: () => nav.toDaily(),
+  });
+  out.push({
+    id: 'cards', dest: 'cards', score: 10, icon: Icon('medal_gold', 52),
+    title: t('tab.cards'), sub: t('hub.cardsIdle'), claim: false, go: () => nav.toCollection(),
+  });
+
+  // Ranked once on mount. The chest ticker must never re-sort under a thumb.
+  const best = new Map<string, Activity>();
+  for (const a of out.sort((x, y) => y.score - x.score)) {
+    if (!best.has(a.dest)) best.set(a.dest, a);
+  }
+  return [...best.values()].slice(0, 2);
+}
+
 export function renderMenu(nav: Nav): void {
   setGameVisible(false);
   const p = state.profile!;
@@ -275,91 +367,93 @@ export function renderMenu(nav: Nav): void {
     ? Math.min(100, Math.max(0, ((p.trophies - league.min) / (nextMin - league.min)) * 100))
     : 100;
   const cooldownMode = state.mode.economy === 'cooldown';
-  const avg = cooldownMode ? averageCooldown(p.trio) : averageElixir(p.deck);
+  const arenaArt = arenaImageUrl(arenaForTrophies(p.trophies));
+  const acts = hubActivities(nav, p);
 
-  const node = div('screen');
+  const node = div('screen hub');
   node.innerHTML = `
-    <div class="topbar">
-      <div class="player">
-        <img class="avatar" src="${asset('logo.png')}" alt="" onerror="this.onerror=null;this.src='${asset('logo.svg')}'">
-        <div class="pinfo">
-          <div class="pname">${escapeHtml(p.nickname)}</div>
-          <div class="plvl">${t('menu.level', { n: lvl })}</div>
+    <div class="hub-rail">
+      <img class="avatar" src="${asset('logo.png')}" alt="" onerror="this.onerror=null;this.src='${asset('logo.svg')}'">
+      <div class="hub-who">
+        <b>${escapeHtml(p.nickname)}</b>
+        <span>${t('menu.level', { n: lvl })}</span>
+      </div>
+      <div class="hub-pills">
+        <span class="hub-pill">${Icon('trophy', 14)}<b id="cur-trophies">${p.trophies}</b></span>
+        <span class="hub-pill">${Icon('gold', 14)}<b id="cur-gold">${p.gold}</b></span>
+        <span class="hub-pill">${Icon('gem', 14)}<b id="cur-gems">${p.gems}</b></span>
+      </div>
+    </div>
+
+    <div class="hub-stage" style="--stage-sky:${LEAGUE_SKY[index] ?? LEAGUE_SKY[0]}">
+      <div class="stage-art"${arenaArt ? ` style="background-image:url('${arenaArt}')"` : ''}></div>
+      <div class="stage-sky"></div>
+      <div class="stage-in">
+        <div class="stage-crest">
+          <div class="crest-medallion">${Icon(leagueBadge(index), 44)}</div>
+          <div class="crest-text">
+            <b>${escapeHtml(leagueName)}</b>
+            <button class="crest-rank" id="go-rank">${t('events.leaderboard')} ›</button>
+          </div>
+          <span class="crest-wl">${p.wins}${t('hub.w')} / ${p.losses}${t('hub.l')}</span>
+        </div>
+
+        <button class="stage-trio" id="go-trio" aria-label="${escapeHtml(t('trio.edit'))}"></button>
+
+        <div class="stage-road">
+          <div class="road-line">
+            <span>${nextMin !== null
+              ? t('menu.toNext', { n: Math.max(0, nextMin - p.trophies), trophy: Icon('trophy', 13), name: nextName })
+              : t('menu.topLeague')}</span>
+            <span>${Icon('timer', 12)} ${fmtSeasonTime(seasonRemainingMs(Date.now()))}</span>
+          </div>
+          ${ProgressBar.html({ kind: 'league', value: pct / 100, height: 9 })}
         </div>
       </div>
-      <div class="currencies">
-        <span class="cur">${Icon('trophy', 15)}<b id="cur-trophies">${p.trophies}</b></span>
-        <span class="cur">${Icon('gold', 15)}<b id="cur-gold">${p.gold}</b></span>
-        <span class="cur">${Icon('gem', 15)}<b id="cur-gems">${p.gems}</b></span>
-      </div>
     </div>
 
-    <div class="league card">
-      <div class="row space-between">
-        <div class="row league-title">
-          ${Icon(leagueBadge(index), 34)}
-          <b>${escapeHtml(leagueName)}</b>
-        </div>
-        <span class="muted">${p.wins}W / ${p.losses}L</span>
-      </div>
-      ${ProgressBar.html({ kind: 'league', value: pct / 100, height: 10, className: 'league-bar' })}
-      <div class="muted">${nextMin !== null
-        ? t('menu.toNext', { n: Math.max(0, nextMin - p.trophies), trophy: Icon('trophy', 14), name: nextName })
-        : t('menu.topLeague')}</div>
-      <div class="muted season-line">${Icon('timer', 12)} ${t('season.endsIn', { time: fmtSeasonTime(seasonRemainingMs(Date.now())) })}</div>
+    <div class="hub-acts">
+      ${acts.map((a) => `
+        <button class="act-tile" data-act="${a.id}">
+          ${a.icon}
+          ${a.claim ? '<i class="claim-dot"></i>' : ''}
+          <b>${escapeHtml(a.title)}</b>
+          <em>${escapeHtml(a.sub)}</em>
+          ${a.cta ? `<span class="act-go">${escapeHtml(a.cta)}</span>` : ''}
+        </button>`).join('')}
+      <button class="acts-all" id="go-events">${t('hub.allEvents')} ${Glyph('chevron', 12)}</button>
     </div>
 
-    <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
-    <!--
-      Shop, Cards, Clans, War, Battle Pass, Tournament, Friendly, Replay and
-      Ranking now live in the persistent bar and the Events screen. Daily stays
-      here because it is the retention loop and must not cost an extra tap; in
-      S3 it becomes an activity tile on the stage.
-    -->
-    <div class="row">
-      <button id="daily" class="secondary grow">${t('menu.daily')}${p.daily && hasDailyRewards(p.daily) ? ' <span class="claim-dot"></span>' : ''}</button>
-      <button id="war" class="secondary grow">${t('menu.war')}${p.warReward ? ' <span class="claim-dot"></span>' : ''}</button>
-    </div>
+    <div class="hub-chests" id="chest-bar"></div>
 
-    <div class="card">
-      <div class="row space-between">
-        <div class="muted">${cooldownMode ? t('menu.trio') : t('menu.yourDeck')}</div>
-        <div class="muted">${cooldownMode ? t('menu.avgCooldown', { v: avg }) : t('menu.avgElixir', { v: avg })}</div>
-      </div>
-      <div class="hand${cooldownMode ? ' trio' : ''}" id="deck"></div>
-      ${cooldownMode ? `<button id="edit-trio" class="secondary" style="margin-top:8px">${t('trio.edit')}</button>` : ''}
-    </div>
-
-    <div class="card">
-      <div class="muted" style="margin-bottom:6px">${t('chest.title')}</div>
-      <div class="chest-bar" id="chest-bar"></div>
-    </div>
+    <button id="battle" class="accent hub-cta">${t('menu.battle')}</button>
   `;
   setUI(node, { screen: 'menu' });
   animateCurrencies(node, { trophies: p.trophies, gold: p.gold, gems: p.gems });
 
   renderChestBar(node.querySelector<HTMLDivElement>('#chest-bar')!, nav);
 
-  const deck = node.querySelector<HTMLDivElement>('#deck')!;
-  for (const id of cooldownMode ? p.trio : p.deck) {
-    const c = getCard(id)!;
-    deck.appendChild(cardTile({
-      cardId: id,
-      size: 'sm',
-      costText: cooldownMode ? `${c.cooldownSec}s` : undefined,
-    }));
+  // The trio stands in the arena — this is the hub's diorama, and it is made
+  // entirely of art we already ship.
+  const trio = node.querySelector<HTMLButtonElement>('#go-trio')!;
+  for (const id of (cooldownMode ? p.trio : p.deck).slice(0, 3)) {
+    trio.innerHTML += cardTileHtml({ cardId: id, size: 'sm', showCost: false, showName: false });
   }
 
-  node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
-  node.querySelector<HTMLButtonElement>('#war')!.onclick = () => { haptic('light'); nav.toWar(); };
-  node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
-  node.querySelector<HTMLButtonElement>('#edit-trio')?.addEventListener('click', () => { haptic('light'); nav.toTrio(); });
+  const tap = (sel: string, go: () => void) =>
+    node.querySelector<HTMLElement>(sel)?.addEventListener('click', () => { haptic('light'); go(); });
+  tap('#battle', () => nav.toBattle());
+  tap('#go-trio', () => nav.toTrio());
+  tap('#go-rank', () => nav.toLeaderboard());
+  tap('#go-events', () => nav.toEvents());
+  for (const tile of node.querySelectorAll<HTMLButtonElement>('.act-tile')) {
+    const act = acts.find((a) => a.id === tile.dataset.act);
+    if (act) tile.addEventListener('click', () => { haptic('light'); act.go(); });
+  }
 
   // A season rolled over while the player was away — greet them with the reward.
   if (p.season?.pendingReward) showSeasonReward(p.season.pendingReward, nav);
 }
-
-// --- Seasons: end-of-season reward claim ---
 
 /** Compact season countdown: "12д 4ч" / "4ч 20м" / "20м". */
 function fmtSeasonTime(ms: number): string {
@@ -416,8 +510,17 @@ function fmtChestTime(ms: number): string {
   return `${sec}${t('chest.s')}`;
 }
 
+/**
+ * The hub chest row.
+ *
+ * Structure is built ONCE; the per-second tick only writes text nodes. The old
+ * version did `bar.innerHTML = ''` and rebuilt four slots every 1000 ms — a full
+ * subtree teardown at 1 Hz, directly beneath a backdrop-filtered bar, which is
+ * the most expensive thing that could possibly sit there.
+ */
 function renderChestBar(bar: HTMLDivElement, nav: Nav): void {
-  const paint = () => {
+  /** Rebuild the slots. Called on mount and whenever a chest actually changes. */
+  const build = () => {
     const p = state.profile;
     if (!p) return;
     const now = Date.now();
@@ -427,38 +530,73 @@ function renderChestBar(bar: HTMLDivElement, nav: Nav): void {
     for (let i = 0; i < CHEST_SLOTS; i++) {
       const chest = chests[i];
       const cell = div('chest-slot');
-      if (!chest) { cell.classList.add('empty'); cell.innerHTML = '<span class="chest-empty">+</span>'; bar.appendChild(cell); continue; }
+      if (!chest) {
+        cell.classList.add('empty');
+        cell.innerHTML = '<span class="chest-empty">+</span>';
+        bar.appendChild(cell);
+        continue;
+      }
       const st = chestState(chest, now);
       const art = uiImageUrl(`chest_${chest.rarity}`);
       const img = art
         ? `<div class="chest-img" style="background-image:url(${art})"></div>`
         : `<div class="chest-img" style="background:${hex(CHEST_DEFS[chest.rarity].color)}"></div>`;
       cell.classList.add(`chest-${st}`);
+      cell.dataset.chest = chest.id;
+      cell.dataset.state = st;
+
       if (st === 'idle') {
         cell.innerHTML = `${img}<div class="chest-cap">${escapeHtml(t(`chest.rarity.${chest.rarity}`))}</div>
           <button class="chest-act secondary" ${anyUnlocking ? 'disabled' : ''}>${t('chest.start')}</button>`;
         cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = async () => {
-          try { state.profile = (await api.unlockChest(chest.id)).profile; haptic('light'); paint(); }
+          try { state.profile = (await api.unlockChest(chest.id)).profile; haptic('light'); build(); }
           catch (e) { toast((e as Error).message, 'error'); }
         };
       } else if (st === 'unlocking') {
-        const cost = gemsToSkip(chest, now);
         cell.innerHTML = `${img}<div class="chest-cap chest-time">${fmtChestTime(chestRemainingMs(chest, now))}</div>
-          <button class="chest-act accent">${Icon('gem', 12)} ${cost}</button>`;
-        cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = () => openChestFlow(nav, chest, true, paint);
+          <button class="chest-act accent">${Icon('gem', 12)} ${gemsToSkip(chest, now)}</button>`;
+        cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = () => openChestFlow(nav, chest, true, build);
       } else {
         cell.innerHTML = `${img}<div class="chest-cap chest-ready">${t('chest.open')}</div>
           <button class="chest-act accent">${t('chest.open')}</button>`;
-        cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = () => openChestFlow(nav, chest, false, paint);
+        cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = () => openChestFlow(nav, chest, false, build);
       }
       bar.appendChild(cell);
     }
   };
-  paint();
+
+  /**
+   * The 1 Hz tick. Writes text only. A chest crossing into a new state is the
+   * one case that needs structure, so it asks for a rebuild and stops there.
+   */
+  const tick = () => {
+    const p = state.profile;
+    if (!p || !bar.isConnected) return;
+    const now = Date.now();
+    for (const chest of p.chests ?? []) {
+      const cell = bar.querySelector<HTMLElement>(`[data-chest="${chest.id}"]`);
+      if (!cell) { build(); return; }
+      const st = chestState(chest, now);
+      if (st !== cell.dataset.state) { build(); return; } // timer hit zero
+      if (st !== 'unlocking') continue;
+      const cap = cell.querySelector<HTMLElement>('.chest-time');
+      const gem = cell.querySelector<HTMLElement>('.chest-act');
+      const left = fmtChestTime(chestRemainingMs(chest, now));
+      if (cap && cap.textContent !== left) cap.textContent = left;
+      const cost = String(gemsToSkip(chest, now));
+      // Only the trailing number changes; the icon markup stays put.
+      const num = gem?.lastChild;
+      if (num && num.nodeType === Node.TEXT_NODE && num.textContent?.trim() !== cost) {
+        num.textContent = ` ${cost}`;
+      }
+    }
+  };
+
+  build();
   stopChestTicker();
-  // Repaint every second so countdowns tick and "ready" flips live.
-  chestTicker = setInterval(paint, 1000);
+  chestTicker = setInterval(tick, 1000);
 }
+
 
 async function openChestFlow(nav: Nav, chest: ChestSlot, withGems: boolean, repaint: () => void): Promise<void> {
   try {

@@ -1,0 +1,192 @@
+/*
+ * The hub.
+ *
+ * Vertical budget on a 390x844 phone (Telegram header 56, safe area 34):
+ *   rail 48 · stage flex · activity strip ~118 · chests 84 · CTA 62 · bar 58+34
+ * The stage is the only flex:1 element, so it absorbs every device difference
+ * and nothing else is ever squeezed below its natural size.
+ */
+
+.screen.hub {
+  gap: var(--s-4);
+  /* The bar padding comes from body.has-nav; the CTA needs to clear it. */
+}
+
+/* ---------- rail ---------- */
+
+.hub-rail {
+  display: flex; align-items: center; gap: var(--s-4);
+  height: 48px; flex: none;
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 0 var(--s-4);
+}
+.hub-rail .avatar { width: 34px; height: 34px; }
+.hub-who { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.hub-who b { font-size: var(--fs-base); font-weight: 900; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+.hub-who span { font-size: var(--fs-xs); color: var(--accent); font-weight: 800; }
+.hub-pills { margin-left: auto; display: flex; gap: 5px; }
+.hub-pill {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  background: rgb(4 11 14 / 0.55); border: 1px solid var(--border-hair);
+  border-radius: 9px; padding: 3px 7px;
+  font-size: var(--fs-sm); font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- stage ---------- */
+
+.hub-stage {
+  position: relative; flex: 1; min-height: 190px;
+  border-radius: var(--r-xl); overflow: hidden;
+  border: 1px solid var(--border);
+  display: flex; flex-direction: column;
+}
+/*
+ * The crop is the arena's DECORATED TOP BAND — pillars, banners, palisade —
+ * not its middle, which is an empty checkerboard. `50% 4%` is what makes this
+ * scenery instead of a screenshot of a battlefield.
+ */
+.stage-art {
+  position: absolute; inset: 0;
+  background-position: 50% 4%; background-size: cover; background-repeat: no-repeat;
+  opacity: 0.9;
+}
+/* Sky above, floor pool below — this is what turns a crop into a composition. */
+.stage-sky {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg,
+      var(--stage-sky, rgb(122 92 40 / 0.5)) 0%,
+      rgb(10 26 32 / 0.15) 34%,
+      rgb(6 16 20 / 0.86) 100%);
+}
+.stage-in {
+  position: relative; flex: 1;
+  display: flex; flex-direction: column;
+  padding: var(--s-5) var(--s-6);
+}
+
+.stage-crest { display: flex; align-items: center; gap: var(--s-5); }
+/* The crest is a 64px raster inside a designed medallion: sampled at native
+   size, presented larger, so it reads as a jewel rather than an upscale. */
+.crest-medallion {
+  width: 60px; height: 60px; flex: none; border-radius: 50%;
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 34% 28%, var(--surface-1), var(--surface-4));
+  border: 2px solid var(--border-strong);
+  box-shadow: inset 0 -4px 10px rgb(0 0 0 / 0.55), 0 3px 8px rgb(0 0 0 / 0.5);
+}
+.crest-medallion .icon { --icon-size: 44px; }
+.crest-text { display: flex; flex-direction: column; min-width: 0; }
+.crest-text b { font-size: var(--fs-xl); font-weight: 900; line-height: 1.1; }
+/* A bare clickable PNG is not an affordance — the crest says what it opens. */
+.crest-rank {
+  font-size: var(--fs-sm); color: var(--primary); font-weight: 800;
+  background: none; border: 0; padding: 0; text-align: left;
+  font-family: inherit; cursor: pointer; box-shadow: none;
+}
+.crest-wl { margin-left: auto; font-size: var(--fs-sm); color: var(--text-2);
+  font-variant-numeric: tabular-nums; }
+
+/* The trio: the player's own cards, standing in their arena. Our diorama. */
+.stage-trio {
+  margin: auto auto var(--s-6); position: relative;
+  display: flex; justify-content: center;
+  background: none; border: 0; padding: 0; cursor: pointer;
+}
+.stage-trio .ct {
+  width: 72px; margin: 0 -11px;
+  border-radius: var(--r-xs);
+  box-shadow: 0 10px 16px -6px rgb(0 0 0 / 0.85);
+}
+.stage-trio .ct:nth-child(1) { transform: rotate(-6deg); }
+.stage-trio .ct:nth-child(3) { transform: rotate(6deg); }
+.stage-trio::after {
+  content: ''; position: absolute; left: 50%; bottom: -10px; translate: -50% 0;
+  width: 200px; height: 22px; border-radius: 50%; z-index: -1;
+  background: radial-gradient(ellipse, rgb(0 0 0 / 0.55), transparent 70%);
+}
+.stage-trio:active { transform: translateY(1px); }
+
+.stage-road { flex: none; }
+.stage-road .road-line {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: var(--fs-sm); color: var(--text-2); margin-bottom: 5px;
+}
+
+/* ---------- activity strip ---------- */
+
+.hub-acts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); flex: none; }
+.act-tile {
+  position: relative; overflow: hidden; text-align: left;
+  border-radius: var(--r-md);
+  padding: var(--s-3) var(--s-4) var(--s-3) 44px;
+  min-height: 84px;
+  background: rgb(12 29 35 / 0.86);
+  border: 1px solid var(--border);
+  box-shadow: 0 3px 8px -3px rgb(0 0 0 / 0.6);
+  display: flex; flex-direction: column; gap: 2px;
+  font-family: inherit; color: var(--text-1); cursor: pointer;
+}
+.act-tile:active { transform: translateY(1px); }
+/* The art bleeds off the left edge under the text — it is texture, not an icon. */
+.act-tile > .icon {
+  position: absolute; left: -8px; top: 50%; translate: 0 -50%;
+  --icon-size: 52px; opacity: 0.9;
+}
+.act-tile b {
+  font-size: var(--fs-sm); font-weight: 900;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.act-tile em { font-style: normal; font-size: var(--fs-xs); color: var(--text-2); }
+.act-tile .act-go {
+  margin-top: auto; align-self: flex-start;
+  font-size: var(--fs-xs); font-weight: 900;
+  background: linear-gradient(180deg, var(--primary), var(--primary-2));
+  color: var(--c-slate-ink); border: 0; border-radius: var(--r-xs);
+  padding: 4px var(--s-4); box-shadow: 0 2px 0 var(--primary-edge);
+}
+.act-tile .claim-dot { position: absolute; top: 7px; right: 7px; }
+
+.acts-all {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; justify-content: center; gap: var(--s-2);
+  background: none; border: 0; box-shadow: none;
+  font-family: inherit; font-size: var(--fs-sm); font-weight: 800;
+  color: var(--text-3); padding: 2px; cursor: pointer;
+}
+.acts-all .glyph { fill: currentColor; }
+
+/* ---------- chests ---------- */
+
+.hub-chests {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-3);
+  flex: none; padding: var(--s-3);
+  background: rgb(12 29 35 / 0.86);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 3px 8px -3px rgb(0 0 0 / 0.6);
+}
+
+/* ---------- CTA ---------- */
+
+.hub-cta {
+  flex: none; width: 100%; height: 60px;
+  font-size: var(--fs-3xl); letter-spacing: 0.03em;
+  position: relative;
+}
+/* The only gold fill on the screen, and the only thing that breathes. */
+.hub-cta::after {
+  content: ''; position: absolute; inset: -6px; border-radius: var(--r-2xl);
+  pointer-events: none; z-index: -1;
+  background: radial-gradient(ellipse at 50% 50%, var(--glow-accent), transparent 68%);
+  animation: cta-breathe 2.4s ease-in-out infinite alternate;
+}
+@keyframes cta-breathe { from { opacity: 0.3 } to { opacity: 0.85 } }
+/* CSS keyframes ignore the --dur-* collapse, so they need their own opt-out. */
+@media (prefers-reduced-motion: reduce) {
+  .hub-cta::after { animation: none; opacity: 0.5; }
+}
