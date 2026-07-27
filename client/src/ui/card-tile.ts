@@ -72,7 +72,13 @@ export function cardTileHtml(o: CardTileOpts): string {
   // `lazy` defers the background-image to an IntersectionObserver (see
   // observeLazyArt). The collection renders the full 80-card catalog, and
   // fetching every portrait up front is ~2 MB the player mostly never scrolls to.
-  const placeholder = `background:linear-gradient(180deg, ${hex(card.color)}, ${hex(shade(card.color, -0.3))})`;
+  //
+  // This MUST stay the `background-image` longhand. The `background:` shorthand
+  // resets background-size and background-position to their initial values, and
+  // an inline style outranks the stylesheet — a shorthand here silently killed
+  // `background-size: cover` and rendered every portrait zoomed into its
+  // top-left corner. card-tile.test.ts guards it.
+  const placeholder = `background-image:linear-gradient(180deg, ${hex(card.color)}, ${hex(shade(card.color, -0.3))})`;
   const artStyle = !art ? placeholder
     : o.lazy ? placeholder
     : `background-image:url('${art}')`;
