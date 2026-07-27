@@ -16,8 +16,10 @@
 html, body {
   margin: 0;
   height: 100%;
+  /* Slate ground. The castle diorama (hub_bg) is layered over this by main.ts;
+     this gradient is what shows through and around it. */
   background:
-    radial-gradient(120% 80% at 50% 0%, var(--c-green-bg-1) 0%, var(--c-green-bg-2) 60%, var(--bg-app) 100%) fixed;
+    radial-gradient(120% 80% at 50% 0%, #10333d 0%, #0a2129 55%, var(--bg-app) 100%) fixed;
   color: var(--text-1);
   font-family: var(--ff-body);
   /* Stop the page from bouncing/scrolling so battle drags reach the canvas. */
@@ -64,10 +66,10 @@ h1, h2 {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  -webkit-text-stroke: 3px var(--c-wood-900);
+  -webkit-text-stroke: 3px var(--c-slate-ink);
   paint-order: stroke fill;
   filter:
-    drop-shadow(0 2px 0 var(--c-wood-900))
+    drop-shadow(0 2px 0 var(--c-slate-ink))
     drop-shadow(0 4px 5px rgb(0 0 0 / 0.45));
 }
 h1 { font-size: var(--fs-4xl); }
@@ -349,7 +351,7 @@ input[type="text"]::placeholder { color: var(--c-gold-dim); }
 .col-card:active { transform: translateY(1px); }
 .col-lvl { font-size: var(--fs-md); font-weight: 800; margin-top: var(--s-1); text-align: center; }
 .up-dot { color: var(--success); }
-.col-bar { height: 6px; background: var(--c-wood-975); border-radius: 3px; overflow: hidden; margin: 3px 0; }
+.col-bar { height: 6px; background: var(--surface-sunken); border-radius: 3px; overflow: hidden; margin: 3px 0; }
 .col-fill { height: 100%; background: linear-gradient(90deg, var(--c-blue-400), var(--c-blue-800)); }
 .col-count { font-size: var(--fs-xs); text-align: center; }
 

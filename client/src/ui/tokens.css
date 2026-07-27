@@ -70,20 +70,41 @@
   --c-white: #fff;
   --c-ink: #0a0e14;
 
-  /* ---- layer 2: semantic ---- */
-  --bg-app: var(--c-green-bg-3);
-  --surface-1: var(--c-wood-400);      /* panel top   */
-  --surface-2: var(--c-wood-600);      /* panel bottom */
-  --surface-3: var(--c-wood-500);      /* list rows   */
-  --surface-4: var(--c-wood-700);
-  --surface-sunken: var(--c-wood-975);
-  --surface-glass: rgb(0 0 0 / 0.45);
-  --surface-glass-soft: rgb(0 0 0 / 0.2);
-  --surface-edge: var(--c-wood-900);
+  /*
+   * Slate-teal chrome (~195°). Chosen over indigo because the Phaser battlefield
+   * draws grass from --c-green-* and towers from --c-wood-*: a blue lobby would
+   * open into a green-and-brown match. Slate is cool against the warm castle art
+   * and does not fight the field. The wood ramp above is kept — the arena and the
+   * card frames still reference it.
+   */
+  --c-slate-950: #061014;
+  --c-slate-900: #0c1d23;
+  --c-slate-800: #143039;
+  --c-slate-700: #1e4553;
+  --c-slate-600: #2b5f70;
+  --c-slate-400: #57b0c9;
+  --c-slate-ink: #040b0e;
 
-  --border: var(--c-gold-800);
+  /* ---- layer 2: semantic ---- */
+  --bg-app: var(--c-slate-950);
+  --surface-1: var(--c-slate-700);     /* panel top   */
+  --surface-2: var(--c-slate-800);     /* panel bottom */
+  --surface-3: var(--c-slate-600);     /* list rows   */
+  --surface-4: var(--c-slate-900);
+  --surface-sunken: var(--c-slate-950);
+  /* Hue-carrying, not flat black — glass over a coloured ground must tint. */
+  --surface-glass: rgb(12 29 35 / 0.66);
+  --surface-glass-soft: rgb(12 29 35 / 0.32);
+  --surface-edge: var(--c-slate-ink);
+
+  /*
+   * Gold survives as a 22% hairline rather than a solid bevel. Stripping gold
+   * entirely orphans the gradient headings and leaves the screen without a voice;
+   * keeping it solid is what made everything look like a wooden board.
+   */
+  --border: rgb(255 216 102 / 0.22);
   --border-strong: var(--c-gold-300);
-  --border-hair: rgb(255 255 255 / 0.15);
+  --border-hair: rgb(255 255 255 / 0.12);
 
   --text-1: var(--c-cream);
   --text-2: var(--c-sand);
@@ -95,9 +116,11 @@
   --accent-edge: var(--c-gold-800);
   --accent-hi: var(--c-gold-200);      /* the de-facto "second gold" used 12x */
 
-  --primary: var(--c-blue-500);
-  --primary-2: var(--c-blue-700);
-  --primary-edge: var(--c-blue-900);
+  /* Teal, not blue: this is the "act on it" colour (claim, confirm, secondary
+     CTA). Gold is reserved for exactly one object per screen. */
+  --primary: var(--c-slate-400);
+  --primary-2: #2f7f99;
+  --primary-edge: #123a49;
 
   --danger: var(--c-red-500);
   --danger-2: var(--c-red-700);
@@ -133,14 +156,24 @@
   --lh-tight: 1.1; --lh-normal: 1.5;
 
   /* ---- elevation ---- */
-  --sh-inset-hi: inset 0 2px 0 rgb(255 255 255 / 0.12);
-  --sh-inset-deep: inset 0 -3px 8px rgb(0 0 0 / 0.35);
+  --sh-inset-hi: inset 0 1px 0 rgb(255 255 255 / 0.14);
+  --sh-inset-deep: inset 0 -2px 6px rgb(0 0 0 / 0.35);
   --sh-1: 0 2px 4px rgb(0 0 0 / 0.25);
   --sh-2: 0 4px 8px rgb(0 0 0 / 0.3);
   --sh-3: 0 8px 14px rgb(0 0 0 / 0.3);
   --sh-4: 0 12px 28px rgb(0 0 0 / 0.45);
-  --edge-3d: 5px;        /* the chunky bottom lip on panels */
-  --edge-btn: 4px;       /* …and on buttons */
+  /* Thinner, but deliberately NOT zero: flat everywhere reads as a web form.
+     Dimension on pressables plus flat read-only plates is a stronger hierarchy
+     signal than flat everywhere, and it is what keeps this feeling like a game. */
+  --edge-3d: 3px;        /* the bottom lip on panels */
+  --edge-btn: 3px;       /* …and on buttons */
+
+  /* Glass. Exactly one live backdrop-filter is allowed on a screen; everything
+     else uses flat alpha. See --surface-glass above. */
+  --glass-blur: 14px;
+  --glass-sat: 155%;
+  --glass-solid: rgb(14 33 40 / 0.96);   /* @supports fallback and low-end path */
+  --glow-accent: rgb(255 216 102 / 0.5);
 
   /* ---- motion ---- */
   --dur-1: 80ms; --dur-2: 140ms; --dur-3: 220ms; --dur-4: 360ms; --dur-5: 600ms;

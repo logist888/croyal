@@ -39,7 +39,8 @@ button.is-loading::after {
   background: var(--surface-glass);
   border: 1px solid var(--border-hair);
   box-shadow: var(--sh-2);
-  backdrop-filter: blur(6px);
+  /* No backdrop-filter here. Exactly ONE live blur per screen is the budget, and
+     it belongs to the navigation bar; a blurred panel class invites a second. */
 }
 .card.panel-flat {
   background: var(--surface-glass-soft);
@@ -65,7 +66,7 @@ button.is-loading::after {
 
 .bar {
   position: relative; height: var(--bar-h, 10px); border-radius: var(--r-pill);
-  background: var(--c-wood-975); border: 1px solid var(--border);
+  background: var(--surface-sunken); border: 1px solid var(--border);
   overflow: hidden;
 }
 .bar-fill {

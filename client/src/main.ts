@@ -8,7 +8,7 @@ import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPi
 import { renderOnboarding, needsOnboarding } from './onboarding';
 import { startTournament } from './tournament';
 import { t, setLang, type Lang } from './i18n';
-import { loadAssetManifest, menuBgUrl, uiImageUrl } from './assets';
+import { loadAssetManifest, menuBgUrl, uiImageUrl, arenaImageUrl } from './assets';
 import { applyRarityTokens } from './ui/tokens';
 import { setIconResolver } from './ui/primitives';
 import { startPerfOverlay } from './dev/perf';
@@ -84,10 +84,14 @@ async function boot() {
   // any icon with no art yet) Icon() falls back to the emoji the UI used before.
   setIconResolver(uiImageUrl);
 
-  const bg = menuBgUrl();
+  // hub_bg is a 3/4 castle diorama and is the app's ground; menu-bg (a green
+  // battlefield) is the fallback. The old scrim of .84 -> .93 buried whichever
+  // was used entirely. At .52 -> .88 the castle silhouette reads around the
+  // plates, which is what gives the slate chrome something to sit on.
+  const bg = arenaImageUrl('hub_bg') ?? menuBgUrl();
   if (bg) {
     document.body.style.background =
-      `linear-gradient(rgba(8,16,10,0.84), rgba(8,16,10,0.93)), url("${bg}") center top / cover fixed`;
+      `linear-gradient(rgba(6,16,20,0.52), rgba(6,16,20,0.88)), url("${bg}") center top / cover fixed`;
   }
 
   const initData = getInitData();

@@ -129,11 +129,18 @@ function animateCurrencies(node: HTMLElement, to: { trophies: number; gold: numb
 }
 
 /**
- * League crest for a league index. `badge_1..10` shipped with the art but were
- * never wired up, so leagues had no visual identity at all — only a name.
+ * League crest for a league index.
+ *
+ * Ten crests ship but there are only eight leagues, so badge_9 and badge_10 were
+ * unreachable art. The crests are spread across the full set instead of taking
+ * the first eight, which uses the two most ornate ones for the top leagues —
+ * where the progression fantasy actually pays off.
  */
+const BADGE_COUNT = 10;
 function leagueBadge(index: number): string {
-  return `badge_${Math.min(LEAGUES.length, Math.max(1, index + 1))}`;
+  const i = Math.max(0, Math.min(LEAGUES.length - 1, index));
+  const n = 1 + Math.round((i / Math.max(1, LEAGUES.length - 1)) * (BADGE_COUNT - 1));
+  return `badge_${n}`;
 }
 
 /** Localized league name where the given card unlocks. */
