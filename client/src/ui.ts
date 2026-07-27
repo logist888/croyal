@@ -908,10 +908,9 @@ export async function renderShop(nav: Nav): Promise<void> {
       </div>
     </div>`).join('');
   node.innerHTML = `
-    <div class="row space-between">
-      <h1>${t('menu.shop')}</h1>
-      <button id="back" class="secondary">${t('common.back')}</button>
-    </div>
+    <!-- No back button: this screen is a tab root. The bar is the navigation;
+         a back arrow here would duplicate the Arena tab. -->
+    <h1>${t('menu.shop')}</h1>
     <div class="row" style="gap:14px;justify-content:center;margin:2px 0 8px">
       <span class="cur">🪙 <b id="shop-gold">${p.gold}</b></span>
       <span class="cur">💎 <b id="shop-gems">${p.gems}</b></span>
@@ -921,7 +920,6 @@ export async function renderShop(nav: Nav): Promise<void> {
     <div class="muted" style="margin-bottom:6px">${t('shop.goldHint')}</div>
     ${goldPacks}`;
   setUI(node, { screen: 'shop' });
-  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const refresh = () => {
     node.querySelector<HTMLElement>('#shop-gold')!.textContent = String(state.profile!.gold);
     node.querySelector<HTMLElement>('#shop-gems')!.textContent = String(state.profile!.gems);
@@ -1237,10 +1235,9 @@ export async function renderCollection(nav: Nav): Promise<void> {
   const p = state.profile!;
   const node = div('screen');
   node.innerHTML = `
-    <div class="row space-between">
-      <h1>${t('col.title')}</h1>
-      <button id="back" class="secondary">${t('common.back')}</button>
-    </div>
+    <!-- No back button: this screen is a tab root. The bar is the navigation;
+         a back arrow here would duplicate the Arena tab. -->
+    <h1>${t('col.title')}</h1>
     <div class="row space-between card">
       <div><b>🃏 ${t('menu.level', { n: levelFromXp(p.xp) })}</b></div>
       <div class="muted">🪙 ${p.gold}</div>
@@ -1248,7 +1245,6 @@ export async function renderCollection(nav: Nav): Promise<void> {
     <div class="collection" id="grid" data-stagger></div>
   `;
   setUI(node, { screen: 'collection' });
-  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
 
   const grid = node.querySelector<HTMLDivElement>('#grid')!;
   // Show the FULL catalog (deck first), not just the account's stored map — so
@@ -1357,9 +1353,9 @@ function openCardDetail(nav: Nav, id: string): void {
 export async function renderClans(nav: Nav): Promise<void> {
   setGameVisible(false);
   const node = div('screen');
-  node.innerHTML = `<div class="row space-between"><h1>${t('clans.title')}</h1><button id="back" class="secondary">${t('common.back')}</button></div><div id="body" class="col">${t('common.loading')}</div>`;
+  // Tab root — no back button; see the note in renderShop.
+  node.innerHTML = `<h1>${t('clans.title')}</h1><div id="body" class="col">${t('common.loading')}</div>`;
   setUI(node, { screen: 'clans' });
-  node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const body = node.querySelector<HTMLDivElement>('#body')!;
 
   try {
