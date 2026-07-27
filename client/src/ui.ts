@@ -1107,6 +1107,17 @@ function openCardDetail(nav: Nav, id: string): void {
   const maxed = cs.level >= MAX_CARD_LEVEL;
   const canUp = !maxed && cs.count >= need && p.gold >= goldCost;
 
+  // A dead "Upgrade" button reads as broken. Say which requirement is missing,
+  // and where duplicates actually come from — they drop from chests only, never
+  // from the starter boxes, which is not guessable from this screen.
+  const missingCards = Math.max(0, need - cs.count);
+  const missingGold = Math.max(0, goldCost - p.gold);
+  const upgradeLabel = maxed ? t('col.maxLevel')
+    : missingCards > 0 ? t('col.needCards', { n: missingCards })
+    : missingGold > 0 ? t('col.needGold', { n: missingGold })
+    : t('col.upgrade');
+  const blockedHint = !maxed && missingCards > 0 ? t('col.cardsFromChests') : '';
+
   const statLine = (label: string, val: number) => `<div class="row space-between"><span class="muted">${label}</span><b>${val}</b></div>`;
   const overlay = div('modal-overlay');
   overlay.innerHTML = `
@@ -1128,8 +1139,9 @@ function openCardDetail(nav: Nav, id: string): void {
           : statLine(t('card.hp'), stats.hp) + statLine(t('card.dmg'), stats.damage) + statLine(t('card.dps'), dps)}
       </div>
       <div class="muted">${maxed ? t('col.maxLevel') : t('col.cards', { have: cs.count, need }) + ' · ' + t('col.gold', { n: goldCost })}</div>
+      ${blockedHint ? `<div class="muted upgrade-hint">${escapeHtml(blockedHint)}</div>` : ''}
       <div class="error" id="cerr"></div>
-      <button id="up" class="accent" ${canUp ? '' : 'disabled'}>${maxed ? t('col.maxLevel') : t('col.upgrade')}</button>
+      <button id="up" class="accent" ${canUp ? '' : 'disabled'}>${escapeHtml(upgradeLabel)}</button>
     </div>`;
   document.getElementById('ui')!.appendChild(overlay);
   const close = () => overlay.remove();

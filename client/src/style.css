@@ -491,3 +491,6 @@ input[type="text"]::placeholder { color: var(--c-gold-dim); }
 /* Lost trophies must not be painted in celebratory gold. */
 .result-screen .res-trophies b.is-gain { color: var(--accent); }
 .result-screen .res-trophies b.is-loss { color: var(--c-red-300); }
+
+/* Explains a disabled upgrade button rather than leaving it looking broken. */
+.upgrade-hint { font-size: var(--fs-md); text-align: center; opacity: 0.85; }
