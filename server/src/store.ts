@@ -47,9 +47,11 @@ export class Store {
     await this.db.init();
     const data = await this.db.loadAll();
     for (const u of data.users) {
+      const grewRoster = this.backfillCards(u); // old accounts predate the 80-card roster
       this.users.set(u.id, u);
       this.byTelegram.set(u.telegramId, u.id);
       this.byNickname.set(u.nickname, u.id);
+      if (grewRoster) this.db?.upsertUser(u); // persist the backfill once
     }
     for (const c of data.clans) this.clans.set(c.id, c);
     for (const [token, userId] of data.sessions) this.sessions.set(token, userId);
@@ -115,6 +117,31 @@ export class Store {
     this.byNickname.set(profile.nickname, id);
     this.db?.upsertUser(profile);
     return profile;
+  }
+
+  /**
+   * Add any catalog cards missing from a user's collection (level 1, count 0).
+   * Accounts created before the roster grew to its current size kept a smaller
+   * `cards` map; every account is meant to own all cards. Returns true if any
+   * were added.
+   */
+  backfillCards(user: PlayerProfile): boolean {
+    let changed = false;
+    for (const cardId of ALL_CARD_IDS) {
+      if (!Object.prototype.hasOwnProperty.call(user.cards, cardId)) {
+        user.cards[cardId] = { level: 1, count: 0 };
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /** Ensure a user owns every catalog card; persists the fix if anything changed. */
+  ensureCards(userId: string): PlayerProfile | undefined {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    if (this.backfillCards(user)) this.db?.upsertUser(user);
+    return user;
   }
 
   /**

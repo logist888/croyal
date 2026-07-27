@@ -1001,10 +1001,13 @@ export async function renderCollection(nav: Nav): Promise<void> {
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
 
   const grid = node.querySelector<HTMLDivElement>('#grid')!;
-  for (const id of p.deck.concat(Object.keys(p.cards).filter((c) => !p.deck.includes(c)))) {
+  // Show the FULL catalog (deck first), not just the account's stored map — so
+  // every card renders even if a legacy account's inventory is behind the roster.
+  const order = p.deck.concat(ALL_CARD_IDS.filter((id) => !p.deck.includes(id)));
+  for (const id of order) {
     const c = getCard(id);
-    const cs = p.cards[id];
-    if (!c || !cs) continue;
+    if (!c) continue;
+    const cs = p.cards[id] ?? { level: 1, count: 0 };
     const locked = !isCardUnlocked(id, p.trophies);
     const need = cardsToUpgrade(cs.level);
     const ready = cs.level < MAX_CARD_LEVEL && cs.count >= need && p.gold >= goldToUpgrade(cs.level);

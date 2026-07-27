@@ -96,6 +96,7 @@ export function createApp() {
   });
 
   app.get('/api/me', requireAuth, (req: AuthedRequest, res: Response) => {
+    store.ensureCards(req.userId!); // backfill any catalog cards missing on old accounts
     store.ensureDaily(req.userId!); // roll a new day's quests/streak on login
     store.ensureSeason(req.userId!); // roll over the season / bank an end-of-season reward
     store.ensureBattlePass(req.userId!); // roll the battle pass to the current season

@@ -3,6 +3,19 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-26 — Fix: legacy accounts missing catalog cards
+Accounts created before the roster grew to 80 kept a smaller stored `cards`
+map, so their collection showed only the old subset and the trio picker
+rejected the newer cards ("not owned"). Newer accounts were fine.
+- **Server backfill** (`store.backfillCards` / `ensureCards`): adds any missing
+  catalog card at level 1 / count 0, preserving existing progress. Runs on boot
+  for every loaded user (persisted once) and on `/api/me` (fixes an account the
+  moment it opens the app — no reboot wait).
+- **Client**: the collection now renders the FULL catalog (deck first) with a
+  level-1 fallback, so every card shows even if an inventory lags the roster.
+- Tests → **220** (`cards-backfill.test.ts`: restores missing cards while keeping
+  upgraded ones; no-op for a full account).
+
 ## build-25 — Boss raid: bridges + choose-your-spawn
 Fixes to the clan boss raid battlefield (reported: units walked on water; no
 control over where they spawn).
