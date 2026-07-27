@@ -112,11 +112,16 @@ button.is-loading::after {
 
 /* ------------------------------------------------------------ Modal/Sheet */
 
+/*
+ * NOTE: no `opacity: 0` here. It used to be, so openModal()'s fade had
+ * something to start from — but any overlay built by hand (which never runs the
+ * fade) then stayed permanently invisible while still covering the viewport and
+ * swallowing every tap. The fade-in supplies its own 0 -> 1 keyframes instead.
+ */
 .modal-overlay {
   position: fixed; inset: 0; background: rgb(0 0 0 / 0.62);
   display: flex; align-items: center; justify-content: center;
   padding: var(--s-7); z-index: var(--z-modal);
-  opacity: 0; /* the veil fade needs something to fade from */
 }
 .modal { width: 100%; max-width: 360px; }
 

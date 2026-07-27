@@ -20,7 +20,7 @@ import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from '
 import { cardImageUrl, uiImageUrl, asset } from './assets';
 import { escapeHtml, hex, div } from './html';
 import { fx, prefersReducedMotion } from './ui/motion';
-import { hydrate, ProgressBar, toast, confirmSheet, Icon } from './ui/primitives';
+import { hydrate, ProgressBar, toast, confirmSheet, Icon, openModal } from './ui/primitives';
 import { cardTile, cardTileHtml, setTileState, observeLazyArt } from './ui/card-tile';
 import { openChestSequence } from './ui/chest-open';
 
@@ -366,25 +366,29 @@ function fmtSeasonTime(ms: number): string {
 /** Modal shown once per rollover: peak league reached + reward, with a claim button. */
 function showSeasonReward(reward: SeasonReward, nav: Nav): void {
   const lang = getLang();
-  const overlay = div('modal-overlay');
-  overlay.innerHTML = `
-    <div class="modal card col" style="align-items:center">
-      <h2>🗓 ${t('season.over')}</h2>
-      <div class="season-league">🏟 ${escapeHtml(seasonLeagueName(reward.league, lang === 'ru'))}</div>
+  // Built through openModal so the veil, the spring-in and the dismiss handling
+  // all come from one place — a hand-rolled overlay silently missed the fade and
+  // sat invisible over the screen, eating taps.
+  const m = openModal({
+    className: 'col',
+    dismissable: false, // the reward must be claimed, not tapped away
+    bodyHtml: `<div class="col" style="align-items:center">
+      <h2>${Icon('timer', 18)} ${t('season.over')}</h2>
+      <div class="season-league">${Icon(leagueBadge(reward.league), 40)} ${escapeHtml(seasonLeagueName(reward.league, lang === 'ru'))}</div>
       <div class="muted">${t('season.reached')}</div>
       <div class="row" style="gap:10px;margin:6px 0">
         ${reward.gold ? `<span class="badge">${Icon('gold', 13)} ${reward.gold}</span>` : ''}
         ${reward.gems ? `<span class="badge">${Icon('gem', 13)} ${reward.gems}</span>` : ''}
       </div>
-      <button id="claim-season" class="accent">${t('season.claim')}</button>`;
-  document.getElementById('ui')!.appendChild(overlay);
-  const btn = overlay.querySelector<HTMLButtonElement>('#claim-season')!;
+      <button id="claim-season" class="accent">${t('season.claim')}</button></div>`,
+  });
+  const btn = m.body.querySelector<HTMLButtonElement>('#claim-season')!;
   btn.onclick = async () => {
     btn.disabled = true;
     try {
       state.profile = (await api.claimSeason()).profile;
       haptic('success');
-      overlay.remove();
+      m.close();
       renderMenu(nav); // repaint currencies with the reward folded in
     } catch (e) {
       btn.disabled = false;
@@ -1119,9 +1123,11 @@ function openCardDetail(nav: Nav, id: string): void {
   const blockedHint = !maxed && missingCards > 0 ? t('col.cardsFromChests') : '';
 
   const statLine = (label: string, val: number) => `<div class="row space-between"><span class="muted">${label}</span><b>${val}</b></div>`;
-  const overlay = div('modal-overlay');
-  overlay.innerHTML = `
-    <div class="modal card col">
+  // Same reason as showSeasonReward: this used to be a hand-built .modal-overlay
+  // that never ran the fade-in, so it rendered at opacity 0 while still covering
+  // the viewport — the card looked unclickable because an invisible sheet was
+  // eating the tap.
+  const m = openModal({ className: 'col', bodyHtml: `
       <div class="row space-between">
         <h2>${escapeHtml(cardName(id))}</h2>
         <button id="x" class="secondary" style="padding:4px 10px">✕</button>
@@ -1141,23 +1147,19 @@ function openCardDetail(nav: Nav, id: string): void {
       <div class="muted">${maxed ? t('col.maxLevel') : t('col.cards', { have: cs.count, need }) + ' · ' + t('col.gold', { n: goldCost })}</div>
       ${blockedHint ? `<div class="muted upgrade-hint">${escapeHtml(blockedHint)}</div>` : ''}
       <div class="error" id="cerr"></div>
-      <button id="up" class="accent" ${canUp ? '' : 'disabled'}>${escapeHtml(upgradeLabel)}</button>
-    </div>`;
-  document.getElementById('ui')!.appendChild(overlay);
-  const close = () => overlay.remove();
-  overlay.querySelector<HTMLButtonElement>('#x')!.onclick = close;
-  overlay.onclick = (e) => { if (e.target === overlay) close(); };
-  const up = overlay.querySelector<HTMLButtonElement>('#up')!;
+      <button id="up" class="accent" ${canUp ? '' : 'disabled'}>${escapeHtml(upgradeLabel)}</button>` });
+  m.body.querySelector<HTMLButtonElement>('#x')!.onclick = m.close;
+  const up = m.body.querySelector<HTMLButtonElement>('#up')!;
   if (canUp) {
     up.onclick = async () => {
       up.disabled = true;
       try {
         state.profile = (await api.upgradeCard(id)).profile;
         haptic('success');
-        close();
+        m.close();
         void renderCollection(nav); // refresh the grid
       } catch (err) {
-        overlay.querySelector<HTMLDivElement>('#cerr')!.textContent = (err as Error).message;
+        m.body.querySelector<HTMLDivElement>('#cerr')!.textContent = (err as Error).message;
         up.disabled = false;
         haptic('error');
       }
