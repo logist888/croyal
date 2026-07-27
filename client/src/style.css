@@ -10,6 +10,7 @@
 @import './ui/primitives.css';
 @import './ui/card-tile.css';
 @import './ui/chest-open.css';
+@import './ui/navbar.css';
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 

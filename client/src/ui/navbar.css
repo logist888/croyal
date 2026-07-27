@@ -1,0 +1,138 @@
+/*
+ * The persistent navigation shell.
+ *
+ * The bar lives OUTSIDE #ui, as a sibling. setUI() does ui.replaceChildren() and
+ * fx.enter/exit translate the .screen, and a backdrop-filter inside a transformed
+ * ancestor loses its backdrop root — it renders flat and any position:fixed inside
+ * it drifts. Keeping it outside is what makes the glass work at all.
+ */
+
+.navbar-wrap {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  z-index: var(--z-nav);
+  pointer-events: none; /* only the bar itself takes input */
+}
+.navbar-wrap > * { pointer-events: auto; }
+
+/*
+ * The scrim tops out at .55, not .9. Every draft killed its own glass by
+ * darkening what sits behind it and then measuring a proud contrast ratio
+ * against nothing. Letting real content pass under the bar is the point.
+ */
+.navbar-scrim {
+  height: 26px;
+  background: linear-gradient(to top, rgb(6 16 20 / 0.55), transparent);
+}
+
+.navbar {
+  height: var(--nav-h);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-top: 1px solid rgb(255 255 255 / 0.14);
+  box-shadow: 0 -8px 22px -12px rgb(0 0 0 / 0.8), inset 0 1px 0 rgb(255 255 255 / 0.1);
+  /* layout/style only — `paint` containment establishes a containing block,
+     which is the same family of hazard as a transformed ancestor. */
+  contain: layout style;
+}
+
+/* The home-indicator strip carries the same tint so the bar reads as one object. */
+.navbar-pad {
+  height: var(--sa-bottom);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+}
+
+/* No blur available, or a device we've already judged low-end: go opaque. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .navbar, .navbar-pad { background: var(--glass-solid); }
+}
+html.low-end .navbar,
+html.low-end .navbar-pad {
+  background: var(--glass-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.nav-cell {
+  appearance: none; background: none; border: 0; padding: 0;
+  /* Explicitly unset the global `button` chrome — radius and inset shadow are
+     inherited from the type selector and made every cell look like a card. */
+  border-radius: 0; box-shadow: none; text-shadow: none;
+  font-family: inherit; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  color: var(--text-3);
+  position: relative; height: 100%;
+  justify-content: center;
+  transition: color var(--dur-2) var(--ease-out);
+}
+.nav-cell .glyph {
+  fill: currentColor;
+  stroke: var(--c-slate-ink);
+  stroke-width: 1.5;
+  paint-order: stroke fill;
+  stroke-linejoin: round;
+  transition: filter var(--dur-2) var(--ease-out);
+}
+.nav-cell span {
+  font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.01em;
+  /* Labels sit over live blurred content; the shadow is what buys the contrast
+     back without darkening the backdrop into uselessness. */
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.55);
+}
+
+.nav-cell[aria-selected="true"] { color: var(--c-white); }
+.nav-cell[aria-selected="true"] .glyph { filter: drop-shadow(0 0 6px var(--primary)); }
+.nav-cell[aria-selected="true"] span { font-weight: 900; }
+/* A 2px rule on the TOP edge of the active cell — reads as a tab, and never
+   collides with the home indicator. */
+.nav-cell[aria-selected="true"]::before {
+  content: ''; position: absolute; top: 0;
+  width: 34px; height: 2px; border-radius: 0 0 2px 2px;
+  background: var(--primary);
+}
+.nav-cell:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; border-radius: var(--r-xs); }
+
+/* Badge. Count badges clear on visit; claim badges clear on claim — two classes
+   because "clears on visit" alone teaches the player that the dot lies. */
+.nav-badge {
+  position: absolute; top: 6px; right: calc(50% - 24px);
+  min-width: 15px; height: 15px; padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--notify); color: var(--c-white);
+  font-size: 9px; font-weight: 900; font-style: normal;
+  display: grid; place-items: center;
+  box-shadow: 0 0 6px rgb(255 82 82 / 0.6);
+}
+
+/* Screens must not end underneath the bar. */
+body.has-nav .screen {
+  padding-bottom: calc(var(--nav-h) + var(--sa-bottom) + var(--s-7));
+}
+
+/* ---------- Events screen ---------- */
+
+.event-list { display: flex; flex-direction: column; gap: var(--s-4); }
+.event-row {
+  display: flex; align-items: center; gap: var(--s-5);
+  width: 100%; text-align: left;
+  padding: var(--s-5) var(--s-5);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--surface-1), var(--surface-2));
+  border: 1px solid var(--border);
+  box-shadow: var(--sh-inset-hi), 0 var(--edge-btn) 0 var(--surface-edge);
+  font-family: inherit; color: var(--text-1); cursor: pointer;
+}
+.event-row:active { transform: translateY(2px); box-shadow: var(--sh-inset-hi); }
+.event-row .icon { flex: none; }
+.event-row .glyph { fill: var(--text-3); flex: none; }
+/* Only the trailing chevron is pushed right — the leading glyph shares the
+   class and was being shoved across too. */
+.event-row > .glyph:last-child { margin-left: auto; }
+.event-text { display: flex; flex-direction: column; min-width: 0; }
+.event-text b { font-size: var(--fs-xl); font-weight: 900; }
+.event-text em { font-style: normal; font-size: var(--fs-md); color: var(--text-2); }

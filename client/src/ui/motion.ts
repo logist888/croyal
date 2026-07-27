@@ -69,6 +69,19 @@ export const fx = {
     return play(el, { opacity: [0, 1], x: [18 * dx, 0] }, { duration: s(DUR.d3), ease: EASE_OUT });
   },
 
+  /**
+   * Tab-to-tab: no horizontal travel. Sliding sideways implies a hierarchy that
+   * sibling tabs do not have, and a hard cut across a persistent bar reads as a
+   * flicker.
+   */
+  fadeIn(el: El): Play {
+    return play(el, { opacity: [0, 1], y: [6, 0] }, { duration: s(DUR.d2), ease: EASE_OUT });
+  },
+
+  fadeOut(el: El): Play {
+    return play(el, { opacity: [1, 0] }, { duration: s(DUR.d1), ease: EASE_IN });
+  },
+
   /** Screen/panel leaving — shorter than enter so the two overlap pleasantly. */
   exit(el: El, dx = 1): Play {
     return play(el, { opacity: [1, 0], x: [0, -14 * dx] }, { duration: s(DUR.d2), ease: EASE_IN });

@@ -4,7 +4,7 @@
 import { api } from './net';
 import { state } from './state';
 import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
-import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, renderWar, renderShop, renderBattlePass, setUI, logoHtml, type Nav } from './ui';
+import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, renderWar, renderShop, renderBattlePass, renderEvents, setUI, logoHtml, type Nav } from './ui';
 import { renderOnboarding, needsOnboarding } from './onboarding';
 import { startTournament } from './tournament';
 import { t, setLang, type Lang } from './i18n';
@@ -12,6 +12,7 @@ import { loadAssetManifest, menuBgUrl, uiImageUrl, arenaImageUrl } from './asset
 import { applyRarityTokens } from './ui/tokens';
 import { setIconResolver } from './ui/primitives';
 import { startPerfOverlay } from './dev/perf';
+import { mountShell } from './ui/shell';
 
 // Phaser (~1.6 MB) lives behind these three modules. Importing them lazily keeps
 // it out of the entry bundle so the register/menu screen paints immediately;
@@ -65,6 +66,7 @@ const nav: Nav = {
   toWar: () => { void renderWar(nav); },
   toShop: () => { void renderShop(nav); },
   toBattlePass: () => { void renderBattlePass(nav); },
+  toEvents: () => renderEvents(nav),
 };
 
 function loading(text: string) {
@@ -78,6 +80,8 @@ async function boot() {
   initTelegram();
   applyRarityTokens(); // --rarity-* comes from the shared catalog, not from CSS
   startPerfOverlay(); // no-op unless ?fps=1
+  // The bar is a sibling of #ui, not a child — see ui/shell.ts for why.
+  mountShell(nav);
   loading(t('common.connecting'));
   await loadAssetManifest();
   // Icons resolve through assets.ts once the manifest is in; until then (and for

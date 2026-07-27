@@ -22,6 +22,8 @@ import { escapeHtml, hex, div } from './html';
 import { fx, prefersReducedMotion } from './ui/motion';
 import { hydrate, ProgressBar, toast, confirmSheet, Icon, openModal } from './ui/primitives';
 import { cardTile, cardTileHtml, setTileState, observeLazyArt } from './ui/card-tile';
+import { syncShell, isTabScreen } from './ui/shell';
+import { Glyph } from './ui/glyphs';
 import { openChestSequence } from './ui/chest-open';
 
 /** Live countdown ticker for the hub chest bar (cleared on any screen change). */
@@ -49,12 +51,13 @@ export interface Nav {
   toWar(): void;
   toShop(): void;
   toBattlePass(): void;
+  toEvents(): void;
 }
 
 const uiRoot = () => document.getElementById('ui')!;
 const gameRoot = () => document.getElementById('game')!;
 
-export type NavDir = 'forward' | 'back' | 'none';
+export type NavDir = 'forward' | 'back' | 'fade' | 'none';
 export interface SetUIOptions {
   /** Screen identity; also drives the default transition direction. */
   screen?: string;
@@ -79,12 +82,20 @@ export function setUI(node: HTMLElement, opts: SetUIOptions = {}): void {
   const screen = opts.screen ?? node.dataset.screen ?? null;
   const prev = ui.firstElementChild as HTMLElement | null;
 
+  // Moving between screens that both sit under the persistent bar is a lateral
+  // move, not a descent — those cross-fade. Everything else keeps the
+  // directional slide.
+  const lateral = isTabScreen(screen) && isTabScreen(currentScreen);
   const dir: NavDir = opts.dir
-    ?? (!prev ? 'none' : screen && screen === currentScreen ? 'none' : screen === 'menu' ? 'back' : 'forward');
+    ?? (!prev ? 'none'
+      : screen && screen === currentScreen ? 'none'
+      : lateral ? 'fade'
+      : screen === 'menu' ? 'back' : 'forward');
   currentScreen = screen;
   if (screen) node.dataset.screen = screen;
 
   hydrate(node);
+  syncShell(screen);
 
   if (!prev || dir === 'none' || prefersReducedMotion()) {
     ui.replaceChildren(node);
@@ -93,9 +104,14 @@ export function setUI(node: HTMLElement, opts: SetUIOptions = {}): void {
 
   // Overlap the two screens: the outgoing one is parked absolutely so the
   // incoming one can take over the layout flow immediately (no height jump).
-  const dx = dir === 'back' ? -1 : 1;
   prev.classList.add('is-leaving');
   ui.appendChild(node);
+  if (dir === 'fade') {
+    fx.fadeOut(prev).finished.finally(() => prev.remove());
+    fx.fadeIn(node);
+    return;
+  }
+  const dx = dir === 'back' ? -1 : 1;
   fx.exit(prev, dx).finished.finally(() => prev.remove());
   fx.enter(node, dx);
 }
@@ -294,23 +310,15 @@ export function renderMenu(nav: Nav): void {
     </div>
 
     <button id="battle" class="accent big-battle">${t('menu.battle')}</button>
-    <button id="pass" class="secondary">${t('menu.pass')}${hasBattlePassRewards(p.battlePass) ? ' <span class="claim-dot"></span>' : ''}</button>
-    <div class="row">
-      <button id="tournament" class="secondary grow">${t('menu.tournament')}</button>
-      <button id="war" class="secondary grow">${t('menu.war')}${p.warReward ? ' <span class="claim-dot"></span>' : ''}</button>
-    </div>
-    <div class="row">
-      <button id="friendly" class="secondary grow">${t('menu.friendly')}</button>
-      <button id="replay" class="secondary grow">${t('menu.replay')}</button>
-    </div>
+    <!--
+      Shop, Cards, Clans, War, Battle Pass, Tournament, Friendly, Replay and
+      Ranking now live in the persistent bar and the Events screen. Daily stays
+      here because it is the retention loop and must not cost an extra tap; in
+      S3 it becomes an activity tile on the stage.
+    -->
     <div class="row">
       <button id="daily" class="secondary grow">${t('menu.daily')}${p.daily && hasDailyRewards(p.daily) ? ' <span class="claim-dot"></span>' : ''}</button>
-      <button id="leaderboard" class="secondary grow">${t('menu.leaderboard')}</button>
-    </div>
-    <button id="shop" class="secondary">${t('menu.shop')}</button>
-    <div class="row">
-      <button id="cards" class="secondary grow">${t('menu.cards')}</button>
-      <button id="clans" class="secondary grow">${t('menu.clans')}</button>
+      <button id="war" class="secondary grow">${t('menu.war')}${p.warReward ? ' <span class="claim-dot"></span>' : ''}</button>
     </div>
 
     <div class="card">
@@ -343,16 +351,8 @@ export function renderMenu(nav: Nav): void {
   }
 
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
-  node.querySelector<HTMLButtonElement>('#friendly')!.onclick = () => { haptic('light'); nav.toFriendly(); };
-  node.querySelector<HTMLButtonElement>('#replay')!.onclick = () => { haptic('light'); nav.toReplay(); };
-  node.querySelector<HTMLButtonElement>('#tournament')!.onclick = () => { haptic('light'); nav.toTournament(); };
   node.querySelector<HTMLButtonElement>('#war')!.onclick = () => { haptic('light'); nav.toWar(); };
-  node.querySelector<HTMLButtonElement>('#shop')!.onclick = () => { haptic('light'); nav.toShop(); };
-  node.querySelector<HTMLButtonElement>('#pass')!.onclick = () => { haptic('light'); nav.toBattlePass(); };
   node.querySelector<HTMLButtonElement>('#daily')!.onclick = () => { haptic('light'); nav.toDaily(); };
-  node.querySelector<HTMLButtonElement>('#leaderboard')!.onclick = () => { haptic('light'); nav.toLeaderboard(); };
-  node.querySelector<HTMLButtonElement>('#cards')!.onclick = () => { haptic('light'); nav.toCollection(); };
-  node.querySelector<HTMLButtonElement>('#clans')!.onclick = () => { haptic('light'); nav.toClans(); };
   node.querySelector<HTMLButtonElement>('#edit-trio')?.addEventListener('click', () => { haptic('light'); nav.toTrio(); });
 
   // A season rolled over while the player was away — greet them with the reward.
@@ -484,6 +484,47 @@ function showChestReward(chest: ChestSlot, rewards: { gold: number; cards: Recor
     rewards,
     mount: document.getElementById('ui')!,
   });
+}
+
+/**
+ * Events — the home for every mode that is not the ladder.
+ *
+ * Deliberately a stacked list rather than a segmented control: segments at
+ * ~91px each are one feature away from breaking, and rows can carry state
+ * (a badge, a countdown, a reward) which segments cannot.
+ */
+export function renderEvents(nav: Nav): void {
+  setGameVisible(false);
+  const p = state.profile;
+  const passReady = !!p && hasBattlePassRewards(p.battlePass);
+
+  const row = (id: string, icon: string, title: string, sub: string, badge = false) =>
+    `<button class="event-row" id="${id}">
+       ${icon}
+       <span class="event-text"><b>${escapeHtml(title)}</b><em>${escapeHtml(sub)}</em></span>
+       ${badge ? '<i class="claim-dot"></i>' : ''}
+       ${Glyph('chevron', 16)}
+     </button>`;
+
+  const node = div('screen');
+  node.innerHTML = `
+    <h1>${t('events.title')}</h1>
+    <div class="event-list" data-stagger>
+      ${row('ev-pass', Icon('star', 30), t('events.pass'), t('events.passSub'), passReady)}
+      ${row('ev-tourney', Icon('medal_gold', 30), t('events.tournament'), t('events.tournamentSub'))}
+      ${row('ev-friendly', Glyph('swords', 30), t('events.friendly'), t('events.friendlySub'))}
+      ${row('ev-rank', Icon('trophy', 30), t('events.leaderboard'), t('events.leaderboardSub'))}
+      ${row('ev-replay', Icon('vs_banner', 30), t('events.replay'), t('events.replaySub'))}
+    </div>`;
+  setUI(node, { screen: 'events' });
+
+  const on = (id: string, go: () => void) =>
+    node.querySelector<HTMLButtonElement>(`#${id}`)!.addEventListener('click', () => { haptic('light'); go(); });
+  on('ev-pass', () => nav.toBattlePass());
+  on('ev-tourney', () => nav.toTournament());
+  on('ev-friendly', () => nav.toFriendly());
+  on('ev-rank', () => nav.toLeaderboard());
+  on('ev-replay', () => nav.toReplay());
 }
 
 // --- Daily: login-streak reward + daily quests ---
