@@ -15,6 +15,7 @@ import {
   type EntitySnapshot, type AttackEvent, type ZoneSnapshot,
 } from '@croyal/shared';
 import { COLOR } from '../ui/tokens';
+import { getTier as deviceTier, setTier as setDeviceTier } from '../ui/device';
 import { SnapshotBuffer, type Sampled } from './interp';
 import { UnitView } from './unit-view';
 import { FxLayer, projectileSprite, type QualityTier } from './fx';
@@ -141,17 +142,20 @@ export class FieldScene extends Phaser.Scene {
   }
 
   private detectTier(): void {
-    const nav = navigator as Navigator & { deviceMemory?: number };
-    const weak = (navigator.hardwareConcurrency ?? 4) <= 4 || (nav.deviceMemory ?? 4) <= 2;
-    // Canvas2D has no cheap tint or additive blend — a rich FX layer there would
-    // crawl, so force the low tier when WebGL is unavailable.
+    // One judgement app-wide (ui/device.ts) so the hub's glass and the field's
+    // effect budget can never disagree. Canvas2D has no cheap tint or additive
+    // blend, so a missing WebGL context forces low regardless of the hardware.
     const noWebgl = this.game.renderer.type === Phaser.CANVAS;
-    this.setTier(weak || noWebgl ? 'low' : 'high');
+    this.setTier(noWebgl ? 'low' : deviceTier());
   }
 
   private setTier(tier: QualityTier): void {
     this.tier = tier;
     this.fx?.setTier(tier);
+    // A device can be "high" on paper and still be thermally throttled. When the
+    // field drops, the navigation bar must stop blurring too rather than
+    // competing for the same GPU.
+    setDeviceTier(tier);
   }
 
   private paintBackground(): void {

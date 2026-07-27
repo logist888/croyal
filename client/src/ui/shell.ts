@@ -71,6 +71,7 @@ const TAB_ROOTS = new Set(['menu', 'shop', 'collection', 'clans', 'events']);
 
 let host: HTMLElement | null = null;
 let bar: HTMLElement | null = null;
+let ind: HTMLElement | null = null;
 let nav: ShellNav | null = null;
 let offBack: (() => void) | null = null;
 
@@ -81,11 +82,16 @@ export function mountShell(n: ShellNav): void {
   host = document.createElement('div');
   host.className = 'navbar-wrap';
   host.hidden = true;
+  // The indicator is a sibling of the cells, NOT part of the markup they
+  // re-render — otherwise it would be destroyed and rebuilt on every navigation
+  // and could never animate between tabs.
   host.innerHTML = '<div class="navbar-scrim"></div>'
-    + '<nav class="navbar" role="tablist"></nav>'
+    + '<nav class="navbar" role="tablist"><i class="nav-ind" aria-hidden="true"></i>'
+    + '<div class="nav-cells"></div></nav>'
     + '<div class="navbar-pad"></div>';
   document.getElementById('app')!.appendChild(host);
-  bar = host.querySelector<HTMLElement>('.navbar');
+  bar = host.querySelector<HTMLElement>('.nav-cells');
+  ind = host.querySelector<HTMLElement>('.nav-ind');
 }
 
 /** How many claimable things live behind the Events tab. */
@@ -155,7 +161,24 @@ export function syncShell(screen: string | null): boolean {
       tab.go(nav!);
     });
   }
+  moveIndicator(active);
   return true;
+}
+
+/**
+ * Slide the capsule to the active cell. Position comes from the cell's measured
+ * box rather than an index times a width, because the five columns are `1fr` and
+ * the real width depends on the device.
+ */
+function moveIndicator(active: TabId | undefined): void {
+  if (!ind || !bar) return;
+  if (!active) { ind.style.opacity = '0'; return; }
+  const cell = bar.querySelector<HTMLElement>(`.nav-cell[data-tab="${active}"]`);
+  if (!cell) { ind.style.opacity = '0'; return; }
+  const x = cell.offsetLeft + cell.offsetWidth / 2;
+  ind.style.opacity = '1';
+  ind.style.width = `${Math.round(cell.offsetWidth * 0.82)}px`;
+  ind.style.transform = `translateX(${Math.round(x)}px) translateX(-50%)`;
 }
 
 /** Where "back" goes from a deep screen: to the root of its own tab. */

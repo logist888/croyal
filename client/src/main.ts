@@ -13,6 +13,7 @@ import { applyRarityTokens } from './ui/tokens';
 import { setIconResolver } from './ui/primitives';
 import { startPerfOverlay } from './dev/perf';
 import { mountShell } from './ui/shell';
+import { detectTier } from './ui/device';
 
 // Phaser (~1.6 MB) lives behind these three modules. Importing them lazily keeps
 // it out of the entry bundle so the register/menu screen paints immediately;
@@ -79,6 +80,7 @@ function loading(text: string) {
 async function boot() {
   initTelegram();
   applyRarityTokens(); // --rarity-* comes from the shared catalog, not from CSS
+  detectTier();        // sets html.low-end, which the glass fallback keys off
   startPerfOverlay(); // no-op unless ?fps=1
   // The bar is a sibling of #ui, not a child — see ui/shell.ts for why.
   mountShell(nav);

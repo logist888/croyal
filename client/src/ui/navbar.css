@@ -26,9 +26,7 @@
 
 .navbar {
   height: var(--nav-h);
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  align-items: center;
+  position: relative;
   background: var(--surface-glass);
   -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
   backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
@@ -38,6 +36,31 @@
      which is the same family of hazard as a transformed ancestor. */
   contain: layout style;
 }
+
+.nav-cells {
+  position: relative; height: 100%;
+  display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+}
+
+/*
+ * The capsule behind the active tab. It is a sibling of the cells so it survives
+ * their per-navigation re-render, and it is positioned from the measured cell
+ * box rather than index x width — the columns are 1fr and the real width depends
+ * on the device.
+ */
+.nav-ind {
+  position: absolute; top: 8px; left: 0;
+  height: calc(100% - 16px); width: 60px;
+  border-radius: var(--r-md);
+  background: rgb(255 255 255 / 0.09);
+  opacity: 0; pointer-events: none;
+  transition:
+    transform var(--dur-3) var(--ease-back-out),
+    width var(--dur-3) var(--ease-back-out),
+    opacity var(--dur-2) var(--ease-out);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) { .nav-ind { transition: none; } }
 
 /* The home-indicator strip carries the same tint so the bar reads as one object. */
 .navbar-pad {
