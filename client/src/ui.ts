@@ -14,13 +14,14 @@ import {
   type ChestSlot, type DailyState, type DailyQuest, type SeasonReward, type BattlePassReward,
 } from '@croyal/shared';
 import { api, type ClanWarInfo, type BattlePassInfo } from './net';
-import { state } from './state';
+import { state, setProfile, onProfile } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
 import { cardImageUrl, uiImageUrl, asset, arenaImageUrl } from './assets';
 import { escapeHtml, hex, div } from './html';
 import { fx, prefersReducedMotion } from './ui/motion';
-import { hydrate, ProgressBar, toast, confirmSheet, Icon, openModal } from './ui/primitives';
+import { hydrate, ProgressBar, toast, confirmSheet, Icon, openModal,
+  currencyChip, refreshCurrencies } from './ui/primitives';
 import { cardTile, cardTileHtml, setTileState, observeLazyArt } from './ui/card-tile';
 import { syncShell, isTabScreen } from './ui/shell';
 import { Glyph } from './ui/glyphs';
@@ -67,6 +68,22 @@ export interface SetUIOptions {
 
 /** The screen currently mounted, so we can infer forward vs back. */
 let currentScreen: string | null = null;
+
+/**
+ * One subscription for the whole app: any profile change repaints the currency
+ * readouts on whatever screen is mounted, plus the tab badges.
+ *
+ * Screens used to each remember to do this, which is exactly why they didn't —
+ * the gold on the collection screen stayed at its mount-time value after a
+ * purchase. Called once from main.ts, after the shell is mounted.
+ */
+export function installProfileSync(): void {
+  onProfile((p) => {
+    if (!p) return;
+    refreshCurrencies({ trophies: p.trophies, gold: p.gold, gems: p.gems });
+    syncShell(currentScreen);
+  });
+}
 
 /**
  * Mount a screen. This is the one choke point every screen passes through, so
@@ -137,7 +154,7 @@ function animateCurrencies(node: HTMLElement, to: { trophies: number; gold: numb
   if (!from) return; // first paint of the session — nothing to count up from
   for (const key of ['trophies', 'gold', 'gems'] as const) {
     if (from[key] === to[key]) continue;
-    const el = node.querySelector<HTMLElement>(`#cur-${key}`);
+    const el = node.querySelector<HTMLElement>(`[data-cur="${key}"] b`);
     if (!el) continue;
     fx.countTo(el, to[key], { from: from[key] });
     fx.pop(el.parentElement ?? el, to[key] > from[key] ? 1.18 : 1.06);
@@ -248,7 +265,7 @@ export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?
         initData: window.Telegram?.WebApp?.initData || undefined,
       });
       state.token = token;
-      state.profile = profile;
+      setProfile(profile);
       if (mode) state.mode = mode; // the server's battle core decides the HUD/onboarding path
       setLang(profile.language as Lang);
       haptic('success');
@@ -379,9 +396,9 @@ export function renderMenu(nav: Nav): void {
         <span>${t('menu.level', { n: lvl })}</span>
       </div>
       <div class="hub-pills">
-        <span class="hub-pill">${Icon('trophy', 14)}<b id="cur-trophies">${p.trophies}</b></span>
-        <span class="hub-pill">${Icon('gold', 14)}<b id="cur-gold">${p.gold}</b></span>
-        <span class="hub-pill">${Icon('gem', 14)}<b id="cur-gems">${p.gems}</b></span>
+        ${currencyChip('trophies', p.trophies, { cls: 'hub-pill' })}
+        ${currencyChip('gold', p.gold, { cls: 'hub-pill' })}
+        ${currencyChip('gems', p.gems, { cls: 'hub-pill' })}
       </div>
     </div>
 
@@ -487,7 +504,7 @@ function showSeasonReward(reward: SeasonReward, nav: Nav): void {
   btn.onclick = async () => {
     btn.disabled = true;
     try {
-      state.profile = (await api.claimSeason()).profile;
+      setProfile((await api.claimSeason()).profile);
       haptic('success');
       m.close();
       renderMenu(nav); // repaint currencies with the reward folded in
@@ -549,7 +566,7 @@ function renderChestBar(bar: HTMLDivElement, nav: Nav): void {
         cell.innerHTML = `${img}<div class="chest-cap">${escapeHtml(t(`chest.rarity.${chest.rarity}`))}</div>
           <button class="chest-act secondary" ${anyUnlocking ? 'disabled' : ''}>${t('chest.start')}</button>`;
         cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = async () => {
-          try { state.profile = (await api.unlockChest(chest.id)).profile; haptic('light'); build(); }
+          try { setProfile((await api.unlockChest(chest.id)).profile); haptic('light'); build(); }
           catch (e) { toast((e as Error).message, 'error'); }
         };
       } else if (st === 'unlocking') {
@@ -601,7 +618,7 @@ function renderChestBar(bar: HTMLDivElement, nav: Nav): void {
 async function openChestFlow(nav: Nav, chest: ChestSlot, withGems: boolean, repaint: () => void): Promise<void> {
   try {
     const { rewards, profile } = await api.openChest(chest.id, withGems);
-    state.profile = profile;
+    setProfile(profile);
     haptic('success');
     repaint();
     showChestReward(chest, rewards);
@@ -676,7 +693,7 @@ function rewardText(gold: number, gems: number): string {
 
 export async function renderDaily(nav: Nav): Promise<void> {
   setGameVisible(false);
-  try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
+  try { setProfile((await api.me()).profile); } catch { /* keep cached */ }
   const p = state.profile!;
   const daily: DailyState | null = p.daily ?? null;
 
@@ -716,7 +733,7 @@ export async function renderDaily(nav: Nav): Promise<void> {
         ${claimed ? t('daily.claimed') : `${t('daily.claim')} — ${rewardText(rew.gold, rew.gems)}`}
       </button>`;
     loginEl.querySelector<HTMLButtonElement>('#claim-login')!.onclick = async () => {
-      try { state.profile = (await api.claimDaily()).profile; haptic('success'); paint(); }
+      try { setProfile((await api.claimDaily()).profile); haptic('success'); paint(); }
       catch (e) { toast((e as Error).message, 'error'); }
     };
 
@@ -739,7 +756,7 @@ export async function renderDaily(nav: Nav): Promise<void> {
           </button>
         </div>`;
       item.querySelector<HTMLButtonElement>('.quest-claim')!.onclick = async () => {
-        try { state.profile = (await api.claimQuest(q.id)).profile; haptic('success'); paint(); }
+        try { setProfile((await api.claimQuest(q.id)).profile); haptic('success'); paint(); }
         catch (e) { toast((e as Error).message, 'error'); }
       };
       questsEl.appendChild(item);
@@ -837,8 +854,8 @@ export async function renderWar(nav: Nav): Promise<void> {
            <h2>${t('war.rewardTitle')}</h2>
            <div class="muted">${t('war.rewardFrom', { score: w.reward.score })}</div>
            <div class="row" style="gap:10px">
-             ${w.reward.gold ? `<span class="badge">🪙 ${w.reward.gold}</span>` : ''}
-             ${w.reward.gems ? `<span class="badge">💎 ${w.reward.gems}</span>` : ''}
+             ${w.reward.gold ? `<span class="badge">${Icon('gold', 13)} ${w.reward.gold}</span>` : ''}
+             ${w.reward.gems ? `<span class="badge">${Icon('gem', 13)} ${w.reward.gems}</span>` : ''}
            </div>
            <button id="claim-war" class="accent">${t('war.claim')}</button>
          </div>`
@@ -860,7 +877,7 @@ export async function renderWar(nav: Nav): Promise<void> {
       ${rows}`;
     body.querySelector<HTMLButtonElement>('#claim-war')?.addEventListener('click', async () => {
       try {
-        state.profile = (await api.claimWar()).profile;
+        setProfile((await api.claimWar()).profile);
         haptic('success');
         paint(await api.clanWar());
       } catch (e) { toast((e as Error).message, 'error'); }
@@ -901,10 +918,10 @@ export async function renderShop(nav: Nav): Promise<void> {
     <div class="card shop-pack">
       <div class="row space-between">
         <div>
-          <b>🪙 ${pk.gold.toLocaleString()}</b>
+          <b>${Icon('gold', 16)} ${pk.gold.toLocaleString()}</b>
           <div class="muted">${t('shop.perGem', { n: Math.round(pk.gold / pk.gems) })}</div>
         </div>
-        <button class="accent shop-buy-gold" data-pack="${pk.id}">💎 ${pk.gems}</button>
+        <button class="accent shop-buy-gold" data-pack="${pk.id}">${Icon('gem', 15)} ${pk.gems}</button>
       </div>
     </div>`).join('');
   node.innerHTML = `
@@ -912,27 +929,21 @@ export async function renderShop(nav: Nav): Promise<void> {
          a back arrow here would duplicate the Arena tab. -->
     <h1>${t('menu.shop')}</h1>
     <div class="row" style="gap:14px;justify-content:center;margin:2px 0 8px">
-      <span class="cur">🪙 <b id="shop-gold">${p.gold}</b></span>
-      <span class="cur">💎 <b id="shop-gems">${p.gems}</b></span>
+      ${currencyChip('gold', p.gold)}
+      ${currencyChip('gems', p.gems)}
     </div>
     <div id="gem-section"></div>
     <h2>${t('shop.gold')}</h2>
     <div class="muted" style="margin-bottom:6px">${t('shop.goldHint')}</div>
     ${goldPacks}`;
   setUI(node, { screen: 'shop' });
-  const refresh = () => {
-    node.querySelector<HTMLElement>('#shop-gold')!.textContent = String(state.profile!.gold);
-    node.querySelector<HTMLElement>('#shop-gems')!.textContent = String(state.profile!.gems);
-  };
-
   node.querySelectorAll<HTMLButtonElement>('.shop-buy-gold').forEach((btn) => {
     btn.onclick = async () => {
       const packId = btn.getAttribute('data-pack')!;
       btn.disabled = true;
       try {
-        state.profile = (await api.buyGold(packId)).profile;
+        setProfile((await api.buyGold(packId)).profile);
         haptic('success');
-        refresh();
       } catch (e) {
         haptic('error');
         toast((e as Error).message, 'error');
@@ -950,8 +961,8 @@ export async function renderShop(nav: Nav): Promise<void> {
     const gemPacks = GEM_PACKS.map((pk) => `
       <div class="card shop-pack">
         <div class="row space-between">
-          <b>💎 ${pk.gems.toLocaleString()}</b>
-          <button class="accent shop-buy-gems" data-pack="${pk.id}">⭐ ${pk.stars}</button>
+          <b>${Icon('gem', 16)} ${pk.gems.toLocaleString()}</b>
+          <button class="accent shop-buy-gems" data-pack="${pk.id}">${Icon('star', 15)} ${pk.stars}</button>
         </div>
       </div>`).join('');
     gemSection.innerHTML = `<h2>${t('shop.gems')}</h2>${gemPacks}`;
@@ -964,9 +975,8 @@ export async function renderShop(nav: Nav): Promise<void> {
           const status = await openTelegramInvoice(link);
           if (status === 'paid') {
             // The webhook credits gems server-side; refresh to reflect it.
-            state.profile = (await api.me()).profile;
+            setProfile((await api.me()).profile);
             haptic('success');
-            refresh();
           } else if (status === 'unsupported') {
             toast(t('shop.openInTelegram'), 'info');
           }
@@ -1017,8 +1027,8 @@ export function renderFriendly(nav: Nav): void {
 // --- Battle Pass: seasonal free/premium reward track (Этап 3) ---
 
 function bpRewardLabel(r: BattlePassReward): string {
-  if (r.gems) return `💎 ${r.gems}`;
-  if (r.gold) return `🪙 ${r.gold}`;
+  if (r.gems) return `${Icon('gem', 14)} ${r.gems}`;
+  if (r.gold) return `${Icon('gold', 14)} ${r.gold}`;
   return '—';
 }
 
@@ -1079,13 +1089,13 @@ export async function renderBattlePass(nav: Nav): Promise<void> {
         cancelLabel: t('common.cancel'),
       });
       if (!ok) return;
-      try { state.profile = (await api.buyBattlePassPremium()).profile; haptic('success'); paint(await api.battlePass()); }
+      try { setProfile((await api.buyBattlePassPremium()).profile); haptic('success'); paint(await api.battlePass()); }
       catch (e) { toast((e as Error).message, 'error'); }
     });
     body.querySelector<HTMLButtonElement>('#claim-all')?.addEventListener('click', async () => {
       try {
         const r = await api.claimBattlePass();
-        state.profile = r.profile;
+        setProfile(r.profile);
         haptic('success');
         toast(t('pass.claimed', { gold: r.gold, gems: r.gems }), 'success');
         paint(await api.battlePass());
@@ -1112,7 +1122,7 @@ export interface TrioPickerOpts {
 
 export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Promise<void> {
   setGameVisible(false);
-  try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
+  try { setProfile((await api.me()).profile); } catch { /* keep cached */ }
   const p = state.profile!;
   const ids = opts.pool ?? ALL_CARD_IDS;
   // A trophy drop can leave a now-locked card in the active trio (the server
@@ -1215,7 +1225,7 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
     err.textContent = '';
     save.disabled = true;
     try {
-      state.profile = (await api.updateTrio([...selected])).profile;
+      setProfile((await api.updateTrio([...selected])).profile);
       haptic('success');
       if (opts.onSaved) opts.onSaved();
       else nav.toMenu();
@@ -1231,7 +1241,7 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
 export async function renderCollection(nav: Nav): Promise<void> {
   setGameVisible(false);
   // refresh profile (gold/xp/card counts may have changed)
-  try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
+  try { setProfile((await api.me()).profile); } catch { /* keep cached */ }
   const p = state.profile!;
   const node = div('screen');
   node.innerHTML = `
@@ -1239,8 +1249,8 @@ export async function renderCollection(nav: Nav): Promise<void> {
          a back arrow here would duplicate the Arena tab. -->
     <h1>${t('col.title')}</h1>
     <div class="row space-between card">
-      <div><b>🃏 ${t('menu.level', { n: levelFromXp(p.xp) })}</b></div>
-      <div class="muted">🪙 ${p.gold}</div>
+      <div><b>${t('menu.level', { n: levelFromXp(p.xp) })}</b></div>
+      <div>${currencyChip('gold', p.gold)}</div>
     </div>
     <div class="collection" id="grid" data-stagger></div>
   `;
@@ -1336,7 +1346,7 @@ function openCardDetail(nav: Nav, id: string): void {
     up.onclick = async () => {
       up.disabled = true;
       try {
-        state.profile = (await api.upgradeCard(id)).profile;
+        setProfile((await api.upgradeCard(id)).profile);
         haptic('success');
         m.close();
         void renderCollection(nav); // refresh the grid
@@ -1359,7 +1369,7 @@ export async function renderClans(nav: Nav): Promise<void> {
   const body = node.querySelector<HTMLDivElement>('#body')!;
 
   try {
-    state.profile = (await api.me()).profile;
+    setProfile((await api.me()).profile);
   } catch { /* keep cached */ }
 
   if (state.profile?.clanId) {

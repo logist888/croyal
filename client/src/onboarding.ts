@@ -5,7 +5,7 @@
  */
 import { STARTER_BOX_COUNT, STARTER_POOL, getCard, RARITY_COLOR } from '@croyal/shared';
 import { api } from './net';
-import { state } from './state';
+import { state, setProfile } from './state';
 import { cardTileHtml } from './ui/card-tile';
 import { setUI, setGameVisible, escapeHtml, hex, logoHtml, renderTrioPicker, type Nav } from './ui';
 import { haptic } from './telegram';
@@ -56,13 +56,13 @@ export function renderOnboarding(nav: Nav): void {
             cell.onclick = null;
             try {
               const res = await api.openStarterBox();
-              state.profile = res.profile;
+              setProfile(res.profile);
               haptic('success');
             } catch {
               // Stale profile (e.g. boxes opened from another device): pull
               // the fresh one so the gate can't wedge on a permanent 400.
               haptic('error');
-              try { state.profile = (await api.me()).profile; } catch { /* keep cached */ }
+              try { setProfile((await api.me()).profile); } catch { /* keep cached */ }
             }
             render();
           };

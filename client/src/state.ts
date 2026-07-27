@@ -25,3 +25,26 @@ export const state: AppState = {
   clan: null,
   mode: { economy: DEFAULT_BATTLE_CONFIG.economy, deployment: DEFAULT_BATTLE_CONFIG.deployment },
 };
+
+/**
+ * Listeners fired whenever the profile is replaced.
+ *
+ * `state.profile` is assigned from ~20 places (every claim, purchase, upgrade
+ * and refetch), and every screen reads it once at mount. That is why a currency
+ * readout outside the hub went stale: nothing told it the number had moved.
+ * Rather than make each screen remember to repaint, the assignment itself
+ * announces the change.
+ */
+type ProfileListener = (p: PlayerProfile | null) => void;
+const profileListeners = new Set<ProfileListener>();
+
+export function onProfile(fn: ProfileListener): () => void {
+  profileListeners.add(fn);
+  return () => profileListeners.delete(fn);
+}
+
+/** Replace the profile and notify. Prefer this over assigning state.profile. */
+export function setProfile(p: PlayerProfile | null): void {
+  state.profile = p;
+  for (const fn of profileListeners) fn(p);
+}

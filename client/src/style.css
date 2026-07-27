@@ -328,6 +328,9 @@ input[type="text"]::placeholder { color: var(--c-gold-dim); }
   background: rgb(0 0 0 / 0.4); border: 1px solid rgb(255 255 255 / 0.14);
   border-radius: 9px; padding: 3px var(--s-3);
   font-weight: 800; font-size: var(--fs-base); white-space: nowrap;
+  /* These tween on every purchase — proportional digits would make the pill
+     jitter its width as the count runs up. */
+  font-variant-numeric: tabular-nums;
 }
 /* Won crowns are real art; the remainder stays as dim dots so the row keeps a
    stable width and reads as "2 of 3". */

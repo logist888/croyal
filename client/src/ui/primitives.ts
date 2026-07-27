@@ -110,6 +110,38 @@ export function Icon(name: string, size = 16): string {
   return `<i class="icon" style="--icon-size:${size}px;background-image:url('${url}')"></i>`;
 }
 
+/* ---------------------------------------------------------------- Currency */
+
+export type Currency = 'trophies' | 'gold' | 'gems';
+
+const CURRENCY_ICON: Record<Currency, string> = {
+  trophies: 'trophy', gold: 'gold', gems: 'gem',
+};
+
+/**
+ * A currency readout. Always emit currencies through this: the `data-cur`
+ * attribute is what lets refreshCurrencies() find and update them, which is the
+ * difference between a number that tracks reality and one that silently goes
+ * stale after a purchase.
+ */
+export function currencyChip(
+  kind: Currency, value: number, opts: { cls?: string; size?: number } = {},
+): string {
+  return `<span class="${opts.cls ?? 'cur'}" data-cur="${kind}">`
+    + Icon(CURRENCY_ICON[kind], opts.size ?? 16)
+    + `<b>${value}</b></span>`;
+}
+
+/** Tween every currency readout on screen to the given values. */
+export function refreshCurrencies(values: Record<Currency, number>): void {
+  for (const el of document.querySelectorAll<HTMLElement>('[data-cur]')) {
+    const kind = el.dataset.cur as Currency;
+    const num = el.querySelector('b');
+    if (!num || values[kind] === undefined) continue;
+    fx.countTo(num as HTMLElement, values[kind]);
+  }
+}
+
 /* ------------------------------------------------------------- ProgressBar */
 
 export type BarKind = 'elixir' | 'xp' | 'hp' | 'chest' | 'league';

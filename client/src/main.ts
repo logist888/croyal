@@ -2,9 +2,9 @@
  * App bootstrap + screen router for the Tower Clash Telegram Mini App.
  */
 import { api } from './net';
-import { state } from './state';
+import { state, setProfile } from './state';
 import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
-import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, renderWar, renderShop, renderBattlePass, renderEvents, setUI, logoHtml, type Nav } from './ui';
+import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, renderWar, renderShop, renderBattlePass, renderEvents, setUI, logoHtml, installProfileSync, type Nav } from './ui';
 import { renderOnboarding, needsOnboarding } from './onboarding';
 import { startTournament } from './tournament';
 import { t, setLang, type Lang } from './i18n';
@@ -84,6 +84,7 @@ async function boot() {
   startPerfOverlay(); // no-op unless ?fps=1
   // The bar is a sibling of #ui, not a child — see ui/shell.ts for why.
   mountShell(nav);
+  installProfileSync();
   loading(t('common.connecting'));
   await loadAssetManifest();
   // Icons resolve through assets.ts once the manifest is in; until then (and for
@@ -108,7 +109,7 @@ async function boot() {
     if (res.mode) state.mode = res.mode;
     if (res.registered && res.token && res.profile) {
       state.token = res.token;
-      state.profile = res.profile;
+      setProfile(res.profile);
       setLang(res.profile.language as Lang);
       nav.toMenu();
     } else {
