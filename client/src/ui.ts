@@ -1139,9 +1139,14 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
     </div>
     <div class="muted">${t('trio.hint')}</div>
     <div class="collection" id="grid" data-stagger></div>
-    <div class="pair-hint muted" id="pair-hint"></div>
-    <div class="error" id="err"></div>
-    <button id="save" class="accent">${t('trio.save')} (${selected.size}/${TRIO_SIZE})</button>
+    <!-- Save, the pair hint and the error travel together in a sticky bar: all
+         three describe the selection, and the selection is made at the top of
+         an 80-card grid. -->
+    <div class="action-bar">
+      <div class="pair-hint muted" id="pair-hint"></div>
+      <div class="error" id="err"></div>
+      <button id="save" class="accent">${t('trio.save')} (${selected.size}/${TRIO_SIZE})</button>
+    </div>
   `;
   setUI(node, { screen: 'trio' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => (opts.onBack ? opts.onBack() : nav.toMenu());

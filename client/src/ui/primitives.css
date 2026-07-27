@@ -139,3 +139,62 @@ button.is-loading::after {
   content: ''; display: block; width: 42px; height: 4px; margin: 0 auto var(--s-5);
   border-radius: var(--r-pill); background: rgb(255 255 255 / 0.25);
 }
+
+/* ---------------------------------------------------------------- ActionBar */
+
+/*
+ * A commit action pinned above the fold.
+ *
+ * The trio picker is an 80-card grid and its Save button was the last row of
+ * it: pick your three at the top, then scroll the whole catalogue to confirm.
+ * A decision the player has already made should never be a scroll away.
+ *
+ * `sticky`, not `fixed`: setUI() translates `.screen` during the transition,
+ * and a transformed ancestor becomes the containing block for a fixed child —
+ * it would drift across the screen every time you navigated. Sticky is
+ * measured against the scroll container, so it survives that.
+ */
+.action-bar {
+  position: sticky;
+  /* Clears the safe area on its own; the nav bar adds its height when present. */
+  bottom: var(--sa-bottom);
+  z-index: var(--z-hud);
+  /* Bleed to the screen edges — a floating pill would fight the bar under it.
+     The negative bottom margin cancels the extra --s-7 that body.has-nav adds
+     to .screen: without it the bar's resting place sits 16px above where it
+     sticks, so it hops as you reach the end of a long list. */
+  margin: var(--s-4) calc(var(--s-7) * -1) calc(var(--s-7) * -1);
+  padding: var(--s-4) var(--s-7) var(--s-5);
+  display: flex; flex-direction: column; gap: var(--s-3);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-top: 1px solid rgb(255 255 255 / 0.14);
+  box-shadow: 0 -8px 22px -12px rgb(0 0 0 / 0.8);
+}
+body.has-nav .action-bar { bottom: calc(var(--nav-h) + var(--sa-bottom)); }
+
+/* Content fades out under the bar instead of being sliced by its edge. */
+.action-bar::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%;
+  height: 22px; pointer-events: none;
+  background: linear-gradient(to top, rgb(6 16 20 / 0.5), transparent);
+}
+
+.action-bar > button { width: 100%; margin: 0; }
+/* Empty helper lines must not reserve a gap — the bar would jump as they fill. */
+.action-bar > :empty { display: none; }
+/* Three picked cards can form three pairs, and each description wraps to two
+   lines. Capped and scrollable so the helper text can never push the action
+   itself off the screen — which is the whole reason the bar exists. */
+.action-bar .pair-hint { max-height: 4.4em; overflow-y: auto; }
+
+/* Same glass go/no-go as the nav bar. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .action-bar { background: var(--glass-solid); }
+}
+html.low-end .action-bar {
+  background: var(--glass-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}

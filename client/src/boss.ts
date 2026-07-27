@@ -3,7 +3,7 @@
  * renders the boss + troops, and shows live per-player damage.
  */
 import { getCard, isWithinField, RIVER_Y, RIVER_HALF_HEIGHT, type BossSnapshot, type BossResult, type ServerMessage } from '@croyal/shared';
-import { socket } from './net';
+import { socket, syncProfile } from './net';
 import { state } from './state';
 import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
 import { GameField, type FieldTap } from './field';
@@ -145,6 +145,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
 
   function showResult(result: BossResult) {
     cleanup();
+    const synced = syncProfile();   // the raid just paid out gold — see battle.ts
     const node = document.createElement('div');
     node.className = 'screen';
     const win = result.outcome === 'win';
@@ -161,7 +162,8 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
       </div>
       <button id="ok" class="accent">${t('boss.backToClan')}</button>`;
     setUI(node, { screen: 'result' });
-    node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toClans();
+    const ok = node.querySelector<HTMLButtonElement>('#ok')!;
+    ok.onclick = async () => { ok.disabled = true; await synced; nav.toClans(); };
   }
 
   try {

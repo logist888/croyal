@@ -10,7 +10,7 @@ import {
   COOLDOWN_BATTLE_CONFIG, LEGACY_BATTLE_CONFIG,
   type BattleSnapshot, type MatchResult, type ServerMessage,
 } from '@croyal/shared';
-import { socket } from './net';
+import { socket, syncProfile } from './net';
 import { state } from './state';
 import { setUI, setGameVisible, escapeHtml, type Nav } from './ui';
 import { GameField, type FieldTap } from './field';
@@ -322,6 +322,11 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
 
   function showResult(result: MatchResult) {
     cleanup();
+    // The match just changed the profile server-side — trophies, gold, xp and
+    // the earned chest. Start the pull NOW so it runs behind the result
+    // sequence (several seconds of reading), and gate the exit on it: the hub
+    // renders from state.profile once, so it must be current before we leave.
+    const synced = syncProfile();
     const node = document.createElement('div');
     node.className = 'screen';
     const win = result.outcome === 'win';
@@ -367,7 +372,12 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
       <button id="ok" class="accent">${onExit ? t('tourney.continue') : t('battle.backToMenu')}</button>`;
     setUI(node, { screen: 'result' });
     node.querySelector<HTMLButtonElement>('#replay')?.addEventListener('click', () => { haptic('light'); nav.toReplay(); });
-    node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => exit();
+    const ok = node.querySelector<HTMLButtonElement>('#ok')!;
+    ok.onclick = async () => {
+      ok.disabled = true;
+      await synced;   // all but instant in practice; the request began seconds ago
+      exit();
+    };
     playResultSequence(node, { win, trophyDelta: friendly ? null : result.trophyDelta });
   }
 

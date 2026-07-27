@@ -26,7 +26,7 @@ export interface ClanWarInfo {
   reward: WarReward | null;
   leaderboard: WarClanEntry[];
 }
-import { API_BASE, WS_BASE, state } from './state';
+import { API_BASE, WS_BASE, state, setProfile } from './state';
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json', ...(opts.headers as Record<string, string>) };
@@ -44,6 +44,24 @@ export interface AuthResponse {
   telegramId?: number;
   suggestedNickname?: string;
   mode?: BattleModeInfo;
+}
+
+/**
+ * Pull the authoritative profile and publish it.
+ *
+ * The client mutates `state.profile` optimistically from REST replies, but a
+ * MATCH changes it server-side with no reply to read: trophies, gold, xp and —
+ * most visibly — the chest awarded into a hub slot. Nothing fetched it, so the
+ * hub kept rendering the pre-match profile and the new chest only appeared
+ * after a page reload.
+ *
+ * Never rejects: a flaky network on the result screen must not strand the
+ * player there. A stale profile is recoverable; a dead button is not.
+ */
+export async function syncProfile(): Promise<void> {
+  try {
+    setProfile((await api.me()).profile);
+  } catch { /* keep the cached profile */ }
 }
 
 export const api = {
