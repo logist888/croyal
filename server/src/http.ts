@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import express, { type Request, type Response, type NextFunction } from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import {
   validateNickname, validateClanName, warWeekRemainingMs, clanWarTier,
@@ -47,6 +48,8 @@ function requireAuth(req: AuthedRequest, res: Response, next: NextFunction): voi
 
 export function createApp() {
   const app = express();
+  // gzip everything down the wire — the Phaser bundle alone is ~1.6 MB raw.
+  app.use(compression());
   app.use(cors());
   app.use(express.json());
 
@@ -360,9 +363,22 @@ export function createApp() {
   // --- Serve the built client (single origin: client + API + WS on one URL) ---
   const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist');
   if (existsSync(clientDist)) {
-    app.use(express.static(clientDist));
+    // Vite emits content-hashed filenames under /assets/*.js|css, so those are
+    // safe to cache forever. index.html and the art manifest must never be
+    // cached or a deploy strands clients on a stale build.
+    app.use(express.static(clientDist, {
+      index: false,
+      setHeaders(res, filePath) {
+        const rel = path.relative(clientDist, filePath);
+        const hashed = /^assets[\\/].+-[A-Za-z0-9_-]{8,}\.(js|css)$/.test(rel);
+        if (hashed) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        else if (rel === 'index.html' || rel.endsWith('manifest.json')) res.setHeader('Cache-Control', 'no-cache');
+        else res.setHeader('Cache-Control', 'public, max-age=86400'); // art: 1 day
+      },
+    }));
     app.use((req: Request, res: Response, next: NextFunction) => {
       if (req.method === 'GET' && !req.path.startsWith('/api')) {
+        res.setHeader('Cache-Control', 'no-cache');
         res.sendFile(path.join(clientDist, 'index.html'));
       } else {
         next();

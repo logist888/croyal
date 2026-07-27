@@ -1,0 +1,164 @@
+/*
+ * Design tokens — the single source of truth for the UI's colour, spacing,
+ * radius, type, elevation, motion and stacking scales.
+ *
+ * Layer 1 is the raw palette (never referenced directly outside this file).
+ * Layer 2 is semantic (--surface-*, --text-*, --accent…) and IS what components
+ * should use, so a reskin only touches this file.
+ *
+ * The `--rarity-*` values are placeholders: `applyRarityTokens()` in tokens.ts
+ * overwrites them at boot from RARITY_COLOR in @croyal/shared, so the DOM and
+ * the Phaser field can never drift apart.
+ */
+:root {
+  color-scheme: dark;
+
+  /* ---- layer 1: raw palette ---- */
+  --c-green-700: #3a8f3a;
+  --c-green-900: #1f5e1f;
+  --c-green-bg-1: #2c6b2c;
+  --c-green-bg-2: #1c4a1c;
+  --c-green-bg-3: #123012;
+
+  --c-wood-400: #7a5536;
+  --c-wood-500: #5e4127;
+  --c-wood-600: #4e3621;
+  --c-wood-700: #44301c;
+  --c-wood-800: #3a2a18;
+  --c-wood-900: #2e2013;
+  --c-wood-950: #2c1d10;
+  --c-wood-975: #2a1d10;
+
+  --c-gold-200: #ffe082;
+  --c-gold-300: #ffd866;
+  --c-gold-400: #ffd54f;
+  --c-gold-500: #f5a623;
+  --c-gold-800: #9c6510;
+  --c-gold-ink: #4a2d00;
+  --c-gold-dim: #9b8763;
+
+  --c-blue-300: #90caf9;
+  --c-blue-400: #42a5f5;
+  --c-blue-500: #36b6f6;
+  --c-blue-700: #0277bd;
+  --c-blue-800: #1565c0;
+  --c-blue-900: #01567f;
+  --c-blue-pale: #cfe3ff;
+
+  --c-red-300: #ff8a80;
+  --c-red-400: #ff7b7b;
+  --c-red-450: #ff6b6b;
+  --c-red-500: #ef5f5f;
+  --c-red-550: #ff5252;
+  --c-red-700: #c62828;
+  --c-red-800: #7a1f1f;
+  --c-red-900: #7f1a1a;
+  --c-red-950: #571414;
+  --c-red-pale: #ffe2e0;
+
+  --c-elixir: #d500f9;
+  --c-elixir-lite: #f59bff;
+  --c-elixir-mid: #f06bff;
+  --c-elixir-text: #f3a8ff;
+  --c-elixir-track: #2a1633;
+  --c-elixir-edge: #4a2a5e;
+
+  --c-purple-800: #4a148c;
+  --c-mint-300: #69f0ae;
+  --c-cream: #fff6e2;
+  --c-sand: #e7d5b0;
+  --c-white: #fff;
+  --c-ink: #0a0e14;
+
+  /* ---- layer 2: semantic ---- */
+  --bg-app: var(--c-green-bg-3);
+  --surface-1: var(--c-wood-400);      /* panel top   */
+  --surface-2: var(--c-wood-600);      /* panel bottom */
+  --surface-3: var(--c-wood-500);      /* list rows   */
+  --surface-4: var(--c-wood-700);
+  --surface-sunken: var(--c-wood-975);
+  --surface-glass: rgb(0 0 0 / 0.45);
+  --surface-glass-soft: rgb(0 0 0 / 0.2);
+  --surface-edge: var(--c-wood-900);
+
+  --border: var(--c-gold-800);
+  --border-strong: var(--c-gold-300);
+  --border-hair: rgb(255 255 255 / 0.15);
+
+  --text-1: var(--c-cream);
+  --text-2: var(--c-sand);
+  --text-3: rgb(255 255 255 / 0.55);
+  --text-on-accent: var(--c-gold-ink);
+
+  --accent: var(--c-gold-300);
+  --accent-2: var(--c-gold-500);
+  --accent-edge: var(--c-gold-800);
+  --accent-hi: var(--c-gold-200);      /* the de-facto "second gold" used 12x */
+
+  --primary: var(--c-blue-500);
+  --primary-2: var(--c-blue-700);
+  --primary-edge: var(--c-blue-900);
+
+  --danger: var(--c-red-500);
+  --danger-2: var(--c-red-700);
+  --danger-edge: var(--c-red-900);
+  --success: var(--c-mint-300);
+  --notify: var(--c-red-550);
+
+  /* Overwritten at boot from RARITY_COLOR (@croyal/shared) — see tokens.ts. */
+  --rarity-common: #b0bec5;
+  --rarity-rare: #ffa726;
+  --rarity-epic: #ab47bc;
+  --rarity-legendary: #26c6da;
+
+  /* ---- space ----
+     Deliberately NOT a pure 4px grid: these are the values the UI already uses,
+     so adopting the scale is a pure refactor with no layout drift. Re-spacing
+     onto a stricter grid is a separate, visible change. */
+  --s-1: 4px;  --s-2: 6px;  --s-3: 8px;  --s-4: 10px; --s-5: 12px;
+  --s-6: 14px; --s-7: 16px; --s-8: 20px; --s-9: 24px; --s-10: 32px;
+
+  /* ---- radius ---- */
+  --r-xs: 8px; --r-sm: 10px; --r-md: 12px; --r-lg: 14px; --r-xl: 16px; --r-2xl: 20px;
+  --r-pill: 999px;
+
+  /* ---- type ---- */
+  --ff-display: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --ff-body: var(--tg-theme-font, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif);
+  --fs-2xs: 9px; --fs-xs: 10px; --fs-sm: 11px; --fs-md: 12px; --fs-base: 13px;
+  --fs-lg: 14px; --fs-xl: 16px; --fs-2xl: 19px; --fs-3xl: 22px; --fs-4xl: 26px;
+  --lh-tight: 1.1; --lh-normal: 1.5;
+
+  /* ---- elevation ---- */
+  --sh-inset-hi: inset 0 2px 0 rgb(255 255 255 / 0.12);
+  --sh-inset-deep: inset 0 -3px 8px rgb(0 0 0 / 0.35);
+  --sh-1: 0 2px 4px rgb(0 0 0 / 0.25);
+  --sh-2: 0 4px 8px rgb(0 0 0 / 0.3);
+  --sh-3: 0 8px 14px rgb(0 0 0 / 0.3);
+  --sh-4: 0 12px 28px rgb(0 0 0 / 0.45);
+  --edge-3d: 5px;        /* the chunky bottom lip on panels */
+  --edge-btn: 4px;       /* …and on buttons */
+
+  /* ---- motion ---- */
+  --dur-1: 80ms; --dur-2: 140ms; --dur-3: 220ms; --dur-4: 360ms; --dur-5: 600ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-back-out: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- stacking ---- */
+  --z-canvas: 0; --z-hud: 10; --z-banner: 50; --z-drag: 200;
+  --z-sheet: 300; --z-modal: 400; --z-toast: 500; --z-veil: 600;
+
+  /* ---- safe area (Telegram overrides --tg-safe-* at runtime) ---- */
+  --sa-top: max(env(safe-area-inset-top, 0px), var(--tg-safe-top, 0px));
+  --sa-bottom: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-bottom, 0px));
+  --sa-left: env(safe-area-inset-left, 0px);
+  --sa-right: env(safe-area-inset-right, 0px);
+}
+
+/* Respect the OS setting globally; motion.ts mirrors this for JS animations. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --dur-4: 0ms; --dur-5: 0ms;
+  }
+}

@@ -7,14 +7,18 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@croyal/shared": "*",
+    "motion": "^12.42.2",
     "phaser": "^3.80.1"
   },
   "devDependencies": {
+    "jsdom": "^30.0.0",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^2.1.9"
   }
 }

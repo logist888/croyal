@@ -38,7 +38,7 @@ export async function startReplay(nav: Nav): Promise<void> {
     <h1>${t('replay.title')}</h1>
     <div class="card"><div class="muted">${t('replay.loading')}</div></div>
     <button id="back" class="secondary">${t('common.back')}</button>`;
-  setUI(loading);
+  setUI(loading, { screen: 'replay' });
   loading.querySelector<HTMLButtonElement>('#back')!.onclick = leave;
 
   function buildUI(opponent: string): HTMLElement {
@@ -53,7 +53,7 @@ export async function startReplay(nav: Nav): Promise<void> {
       </div>
       <div id="arena" class="arena-host"></div>
       <div class="replay-badge">${t('replay.badge')}</div>`;
-    setUI(node);
+    setUI(node, { screen: 'replay' });
     setGameVisible(false);
     node.querySelector<HTMLButtonElement>('#leave')!.onclick = leave;
     return node;
@@ -62,7 +62,7 @@ export async function startReplay(nav: Nav): Promise<void> {
   function onSnapshot(snap: BattleSnapshot) {
     yourSide = snap.yourSide;
     if (field) field.setFlip(yourSide === 'B');
-    field?.render(snap.entities);
+    field?.render(snap.entities, snap.tick);
     if (snap.events?.length) field?.addEvents(snap.events);
     field?.setZones(snap.zones ?? []);
     field?.setFastPhase(snap.finalPhase ?? snap.doubleElixir);
@@ -88,7 +88,7 @@ export async function startReplay(nav: Nav): Promise<void> {
         <div class="muted">${t('replay.ended')}</div>
       </div>
       <button id="ok" class="accent">${t('battle.backToMenu')}</button>`;
-    setUI(node);
+    setUI(node, { screen: 'replay' });
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toMenu();
   }
 

@@ -19,7 +19,8 @@ import {
   nextCardHtml, setNextCard, type HandUI, type TrioUI,
 } from './hud';
 import { beginCardDrag } from './deploy-drag';
-import { haptic } from './telegram';
+import { haptic, onViewport } from './telegram';
+import { setPerfSource } from './dev/perf';
 import { t, reasonText, cardName } from './i18n';
 import { cardImageUrl, uiImageUrl } from './assets';
 
@@ -40,6 +41,7 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
   let opponentName = '';
   let off: (() => void) | null = null;
   let offConn: (() => void) | null = null;
+  let offViewport: (() => void) | null = null;
   let inMatch = false;
   let fastBannerShown = false;
   let seenIds: Set<string> | null = null;
@@ -118,12 +120,15 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
   }
 
   paintSearching();
-  setUI(searching);
+  setUI(searching, { screen: 'battle' });
 
   function cleanup() {
     off?.();
     offConn?.();
+    offViewport?.();
+    offViewport = null;
     document.getElementById('reconnect-overlay')?.remove();
+    setPerfSource(null);
     field?.destroy();
     field = null;
     setGameVisible(false);
@@ -141,6 +146,11 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
       document.body.appendChild(veil);
     } else {
       existing?.remove();
+      // The server pushes a fresh full snapshot after attach, which is a hard
+      // jump in the timeline. Drop the interpolation buffer and teleport rather
+      // than sliding every unit across the arena — and suppress the spawn/death
+      // effects for that one frame so a resync isn't a firework show.
+      field?.hardResync();
     }
   }
 
@@ -176,7 +186,7 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
         ? `<div class="handbar"><div class="hand" id="hand"></div></div>`
         : `${elixirBarHtml()}
            <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`}`;
-    setUI(root);
+    setUI(root, { screen: 'battle' });
     setGameVisible(false);
     root.querySelector<HTMLButtonElement>('#leave')!.onclick = () => {
       socket.send({ t: 'leaveMatch' });
@@ -222,7 +232,6 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
             socket.send({ t: 'deploy', cardId: id, x: tile.x, y: tile.y });
             hand?.clearSelection();
           },
-          cardArt: (id) => cardImageUrl(id),
           setHoldRender: (h) => hand?.setRenderHold(h),
         }),
       });
@@ -236,7 +245,7 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
     // sync so post-battle screens are correct even after a server mode flip.
     if (snap.mode) state.mode = snap.mode;
     if (field) field.setFlip(yourSide === 'B');
-    field?.render(snap.entities);
+    field?.render(snap.entities, snap.tick);
     if (snap.events?.length) field?.addEvents(snap.events);
     field?.setZones(snap.zones ?? []);
     const fast = snap.finalPhase ?? snap.doubleElixir;
@@ -349,7 +358,7 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
       ${friendly ? '' : chestBlock}
       ${onExit ? '' : `<button id="replay" class="secondary">${t('menu.replay')}</button>`}
       <button id="ok" class="accent">${onExit ? t('tourney.continue') : t('battle.backToMenu')}</button>`;
-    setUI(node);
+    setUI(node, { screen: 'result' });
     node.querySelector<HTMLButtonElement>('#replay')?.addEventListener('click', () => { haptic('light'); nav.toReplay(); });
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => exit();
   }
@@ -388,6 +397,14 @@ export async function startBattle(nav: Nav, opts: BattleStart = { kind: 'ranked'
         hand?.clearSelection();
         haptic('light');
       }, arenaId);
+      // Rotation, the keyboard, or Telegram resizing its sheet used to leave the
+      // arena frozen at whatever size the match started with, for the rest of
+      // the match. Re-fit it whenever the viewport actually changes.
+      offViewport = onViewport(() => {
+        const next = computeFieldSize();
+        field?.resize(next.w, next.h);
+      });
+      setPerfSource(() => field!.stats());
     } else if (msg.t === 'friendlyCreated') {
       paintSearching(msg.code);
     } else if (msg.t === 'battle' && root) {

@@ -12,6 +12,8 @@ export interface AssetManifest {
   towers: Record<string, string>;
   boss: Record<string, string>;
   arena: Record<string, string>;
+  /** Battle effect sprites (arrow, explosion, deploy_ring, …). */
+  fx: Record<string, string>;
   ui: Record<string, string>;
   menuBg?: string | null;
 }
@@ -22,7 +24,8 @@ export function asset(p: string): string {
   return base + p.replace(/^\//, '');
 }
 
-const empty = (): AssetManifest => ({ cards: {}, units: {}, towers: {}, boss: {}, arena: {}, ui: {}, menuBg: null });
+const empty = (): AssetManifest =>
+  ({ cards: {}, units: {}, towers: {}, boss: {}, arena: {}, fx: {}, ui: {}, menuBg: null });
 let manifest: AssetManifest = empty();
 
 function rebase(rec: Record<string, string>): Record<string, string> {
@@ -38,7 +41,8 @@ export async function loadAssetManifest(): Promise<void> {
       const data = { ...empty(), ...(await res.json()) } as AssetManifest;
       manifest = {
         cards: rebase(data.cards), units: rebase(data.units), towers: rebase(data.towers),
-        boss: rebase(data.boss), arena: rebase(data.arena), ui: rebase(data.ui),
+        boss: rebase(data.boss), arena: rebase(data.arena),
+        fx: rebase(data.fx), ui: rebase(data.ui),
         menuBg: data.menuBg ? asset(data.menuBg) : null,
       };
     }
@@ -59,6 +63,11 @@ export const arenaImageUrl = (arenaId?: string): string | undefined =>
   ?? manifest.arena.background ?? manifest.arena.arena_training ?? Object.values(manifest.arena)[0];
 export const menuBgUrl = (): string | undefined => manifest.menuBg ?? undefined;
 
+/** Effect sprite for the battle FX layer (arrow, explosion, deploy_ring, …). */
+export const fxImageUrl = (id: string): string | undefined => manifest.fx[id];
+/** Every effect sprite the manifest knows about, as Phaser texture keys. */
+export const fxKeys = (): string[] => Object.keys(manifest.fx);
+
 /** Texture (key,url) list preloaded by the Phaser field. */
 export function fieldLoadList(): { key: string; url: string }[] {
   const list: { key: string; url: string }[] = [];
@@ -67,5 +76,9 @@ export function fieldLoadList(): { key: string; url: string }[] {
   if (manifest.towers.princess) list.push({ key: 'tower:princess', url: manifest.towers.princess });
   const boss = bossImageUrl();
   if (boss) list.push({ key: 'boss', url: boss });
+  // The 16 effect sprites shipped with the art but were dropped on the floor:
+  // AssetManifest had no `fx` field, so rebase() never copied the section and
+  // the field fell back to drawing every effect with vector primitives.
+  for (const [id, url] of Object.entries(manifest.fx)) list.push({ key: `fx:${id}`, url });
   return list;
 }

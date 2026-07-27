@@ -2,13 +2,28 @@
  * Shared HUD helpers for battle & boss screens.
  */
 import { ARENA_WIDTH, ARENA_HEIGHT, ELIXIR_MAX, getCard, type CardCooldown } from '@croyal/shared';
-import { hex, escapeHtml } from './ui';
+import { hex } from './html';
 import { cardName } from './i18n';
 import { cardImageUrl } from './assets';
+import { cardTile, setTileState, setTileCooldown } from './ui/card-tile';
+import { haptic, viewportHeight } from './telegram';
 
+/**
+ * Size the arena to whatever height is actually available.
+ *
+ * Two fixes over the old version: it reads Telegram's stable viewport height
+ * (window.innerHeight is wrong inside a Mini App, especially in fullscreen and
+ * with the keyboard up), and the chrome reserve is derived from the real hand
+ * height rather than a flat 250px — with the bigger card tiles that constant
+ * pushed the hand off the bottom of the screen.
+ */
 export function computeFieldSize(): { w: number; h: number } {
-  const availH = Math.max(360, window.innerHeight - 250);
   const availW = Math.min(window.innerWidth - 12, 460);
+  // 3 cards across at a 3:4 aspect, plus the HUD bar, elixir row and paddings.
+  const handW = Math.min(availW, 460);
+  const handH = ((handW - 2 * 8 - 2 * 10) / 3) * (4 / 3);
+  const chrome = Math.round(handH + 108);
+  const availH = Math.max(320, viewportHeight() - chrome);
   const w = Math.min(availW, (availH * ARENA_WIDTH) / ARENA_HEIGHT);
   const h = (w * ARENA_HEIGHT) / ARENA_WIDTH;
   return { w: Math.round(w), h: Math.round(h) };
@@ -37,17 +52,14 @@ export function buildHand(container: HTMLElement, handlers: HandHandlers = {}): 
     container.innerHTML = '';
     current.forEach((id) => {
       const c = getCard(id)!;
-      const cell = document.createElement('div');
       const affordable = elixir >= c.cost;
-      const art = cardImageUrl(id);
-      cell.className = 'handcard' + (art ? ' has-art' : '') + (selectedId === id ? ' selected' : '') + (affordable ? '' : ' unaffordable');
-      if (art) {
-        cell.style.backgroundImage = `url(${art})`;
-        cell.innerHTML = '';
-      } else {
-        cell.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
-        cell.innerHTML = `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
-      }
+      // CardTile always draws the cost badge over a scrim. The old renderer
+      // blanked the tile whenever art existed, hiding the cost mid-battle.
+      const cell = cardTile({
+        cardId: id,
+        size: 'md',
+        state: !affordable ? 'unaffordable' : selectedId === id ? 'selected' : 'normal',
+      });
       cell.onclick = () => {
         if (!affordable) return;
         selectedId = selectedId === id ? null : id;
@@ -107,24 +119,11 @@ export function buildTrioHand(container: HTMLElement, handlers: TrioHandlers): T
   const timers = new Map<string, { remaining: number; total: number; at: number; speed: number }>();
 
   function buildCell(cardId: string): HTMLElement {
-    const c = getCard(cardId)!;
-    const cell = document.createElement('div');
-    const art = cardImageUrl(cardId);
-    cell.className = 'handcard triocard' + (art ? ' has-art' : '');
-    if (art) {
-      cell.style.backgroundImage = `url(${art})`;
-    } else {
-      cell.style.background = `linear-gradient(180deg, ${hex(c.color)}, ${hex(shadeHex(c.color, -0.3))})`;
-      cell.innerHTML = `<span class="triocard-name">${escapeHtml(cardName(cardId))}</span>`;
-    }
-    const overlay = document.createElement('div');
-    overlay.className = 'cd-overlay';
-    const num = document.createElement('div');
-    num.className = 'cd-num';
-    cell.appendChild(overlay);
-    cell.appendChild(num);
+    // Trio cards carry a recharge time, not an elixir price — the cost badge
+    // would be misleading here, so it is suppressed.
+    const cell = cardTile({ cardId, size: 'lg', showCost: false });
     cell.onclick = () => {
-      if (cell.classList.contains('cooling')) return;
+      if (cell.dataset.state === 'cooling') return;
       handlers.onPlay(cardId);
     };
     container.appendChild(cell);
@@ -134,18 +133,13 @@ export function buildTrioHand(container: HTMLElement, handlers: TrioHandlers): T
   function paint(cardId: string, remaining: number, total: number): void {
     const cell = cells.get(cardId);
     if (!cell) return;
-    const cooling = remaining > 0.001;
-    if (cell.classList.contains('cooling') && !cooling) {
-      // recharge finished — a little "ready" pop
-      cell.classList.add('pop');
-      window.setTimeout(() => cell.classList.remove('pop'), 350);
+    // setTileCooldown returns true exactly on the cooling → ready edge.
+    if (setTileCooldown(cell, remaining, total)) {
+      cell.classList.add('is-ready');
+      window.setTimeout(() => cell.classList.remove('is-ready'), 380);
+      haptic('light');
     }
-    cell.classList.toggle('cooling', cooling);
-    const overlay = cell.querySelector<HTMLDivElement>('.cd-overlay')!;
-    const num = cell.querySelector<HTMLDivElement>('.cd-num')!;
-    const frac = cooling && total > 0 ? Math.min(1, remaining / total) : 0;
-    overlay.style.height = `${frac * 100}%`;
-    num.textContent = cooling ? String(Math.ceil(remaining)) : '';
+    if (aiming === cardId && cell.dataset.state === 'normal') setTileState(cell, 'aiming');
   }
 
   let raf = 0;
@@ -172,7 +166,10 @@ export function buildTrioHand(container: HTMLElement, handlers: TrioHandlers): T
     },
     setAiming(cardId: string | null) {
       aiming = cardId;
-      for (const [id, cell] of cells) cell.classList.toggle('aiming', aiming === id);
+      for (const [id, cell] of cells) {
+        if (cell.dataset.state === 'cooling') continue; // cooldown wins
+        setTileState(cell, aiming === id ? 'aiming' : 'normal');
+      }
     },
   };
 }

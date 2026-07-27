@@ -5,13 +5,13 @@
  * A plain tap (no movement) is left alone so tap-to-select still works on desktop.
  */
 import type { GameField, FieldTap } from './field';
+import { cardTileHtml } from './ui/card-tile';
 import { haptic } from './telegram';
 
 export interface DragDeps {
   field: () => GameField | null;
   validate: (cardId: string, tile: FieldTap) => boolean;
   deploy: (cardId: string, tile: FieldTap) => void;
-  cardArt: (cardId: string) => string | null | undefined;
   /** Called true while the gesture is active so the hand pauses DOM rebuilds. */
   setHoldRender?: (hold: boolean) => void;
 }
@@ -28,7 +28,9 @@ export function beginCardDrag(cardId: string, cell: HTMLElement, ev: PointerEven
   const startY = ev.clientY;
   let dragging = false;
   let ghost: HTMLDivElement | null = null;
-  const art = deps.cardArt(cardId);
+  // Remember the tile's state so teardown restores it rather than forcing
+  // 'normal' (which would wipe an 'unaffordable' or 'selected' card).
+  const stateBefore = cell.dataset.state ?? 'normal';
 
   // Hold hand re-render for the whole gesture: a snapshot rebuilding the hand
   // mid-drag would remove this card and break pointer capture.
@@ -39,11 +41,12 @@ export function beginCardDrag(cardId: string, cell: HTMLElement, ev: PointerEven
     if (!dragging) {
       if (Math.hypot(e.clientX - startX, e.clientY - startY) < MOVE_THRESHOLD) return;
       dragging = true;
-      cell.classList.add('dragging');
-      ghost = document.createElement('div');
-      ghost.className = 'drag-ghost';
-      if (art) ghost.style.backgroundImage = `url(${art})`;
-      else ghost.style.background = 'linear-gradient(180deg,#9aa,#556)';
+      cell.dataset.state = 'dragging';
+      // The ghost is the same CardTile look, so what you drag matches what you
+      // picked up (frame, rarity glow and cost all come along).
+      const holder = document.createElement('div');
+      holder.innerHTML = cardTileHtml({ cardId, size: 'sm', className: 'ct-ghost' });
+      ghost = holder.firstElementChild as HTMLDivElement;
       document.body.appendChild(ghost);
     }
     const tile = field.screenToTile(e.clientX, e.clientY);
@@ -61,7 +64,7 @@ export function beginCardDrag(cardId: string, cell: HTMLElement, ev: PointerEven
     cell.removeEventListener('pointerup', finish);
     cell.removeEventListener('pointercancel', cancel);
     try { cell.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
-    cell.classList.remove('dragging');
+    cell.dataset.state = stateBefore;
     field.setMarker(null, false);
     ghost?.remove();
     deps.setHoldRender?.(false);

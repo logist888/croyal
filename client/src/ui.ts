@@ -18,6 +18,10 @@ import { state } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
 import { cardImageUrl, uiImageUrl, asset } from './assets';
+import { escapeHtml, hex, div } from './html';
+import { fx, prefersReducedMotion } from './ui/motion';
+import { hydrate, ProgressBar, toast, confirmSheet } from './ui/primitives';
+import { cardTile, cardTileHtml, setTileState } from './ui/card-tile';
 
 /** Live countdown ticker for the hub chest bar (cleared on any screen change). */
 let chestTicker: ReturnType<typeof setInterval> | null = null;
@@ -49,30 +53,58 @@ export interface Nav {
 const uiRoot = () => document.getElementById('ui')!;
 const gameRoot = () => document.getElementById('game')!;
 
-export function setUI(node: HTMLElement): void {
+export type NavDir = 'forward' | 'back' | 'none';
+export interface SetUIOptions {
+  /** Screen identity; also drives the default transition direction. */
+  screen?: string;
+  /** Override the inferred direction ('none' = hard cut, e.g. in-battle swaps). */
+  dir?: NavDir;
+}
+
+/** The screen currently mounted, so we can infer forward vs back. */
+let currentScreen: string | null = null;
+
+/**
+ * Mount a screen. This is the one choke point every screen passes through, so
+ * it owns the transition, primitive hydration and the chest-ticker teardown.
+ *
+ * Direction is inferred rather than threaded through 25 call sites: this app is
+ * hub-and-spoke, so "going to the menu" is always a back motion and everything
+ * else is forward.
+ */
+export function setUI(node: HTMLElement, opts: SetUIOptions = {}): void {
   stopChestTicker(); // any screen change kills the hub chest countdown
   const ui = uiRoot();
-  ui.innerHTML = '';
+  const screen = opts.screen ?? node.dataset.screen ?? null;
+  const prev = ui.firstElementChild as HTMLElement | null;
+
+  const dir: NavDir = opts.dir
+    ?? (!prev ? 'none' : screen && screen === currentScreen ? 'none' : screen === 'menu' ? 'back' : 'forward');
+  currentScreen = screen;
+  if (screen) node.dataset.screen = screen;
+
+  hydrate(node);
+
+  if (!prev || dir === 'none' || prefersReducedMotion()) {
+    ui.replaceChildren(node);
+    return;
+  }
+
+  // Overlap the two screens: the outgoing one is parked absolutely so the
+  // incoming one can take over the layout flow immediately (no height jump).
+  const dx = dir === 'back' ? -1 : 1;
+  prev.classList.add('is-leaving');
   ui.appendChild(node);
+  fx.exit(prev, dx).finished.finally(() => prev.remove());
+  fx.enter(node, dx);
 }
 export function setGameVisible(visible: boolean): void {
   gameRoot().classList.toggle('hidden', !visible);
 }
 
-function div(cls: string, html = ''): HTMLDivElement {
-  const d = document.createElement('div');
-  d.className = cls;
-  d.innerHTML = html;
-  return d;
-}
-export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!),
-  );
-}
-export function hex(color: number): string {
-  return '#' + color.toString(16).padStart(6, '0');
-}
+// escapeHtml/hex/div live in html.ts so ui/primitives.ts can use them without
+// importing this module back. Re-exported here for the existing call sites.
+export { escapeHtml, hex } from './html';
 
 /** Localized league name where the given card unlocks. */
 function unlockLeagueName(cardId: string): string {
@@ -124,7 +156,7 @@ export function renderRegister(nav: Nav, opts: { telegramId?: number; suggested?
       <button id="submit" class="accent" disabled>${t('register.submit')}</button>
     </div>
   `;
-  setUI(node);
+  setUI(node, { screen: 'register' });
 
   const nick = node.querySelector<HTMLInputElement>('#nick')!;
   const confirm = node.querySelector<HTMLInputElement>('#confirm')!;
@@ -255,26 +287,18 @@ export function renderMenu(nav: Nav): void {
       <div class="chest-bar" id="chest-bar"></div>
     </div>
   `;
-  setUI(node);
+  setUI(node, { screen: 'menu' });
 
   renderChestBar(node.querySelector<HTMLDivElement>('#chest-bar')!, nav);
 
   const deck = node.querySelector<HTMLDivElement>('#deck')!;
   for (const id of cooldownMode ? p.trio : p.deck) {
     const c = getCard(id)!;
-    const cell = div('handcard');
-    const art = cardImageUrl(id);
-    if (art) {
-      cell.className = 'handcard has-art';
-      cell.style.backgroundImage = `url(${art})`;
-    } else {
-      cell.style.background = hex(c.color);
-      cell.innerHTML = cooldownMode
-        ? `${escapeHtml(cardName(id))}<div class="cost cost-cd">${c.cooldownSec}s</div>`
-        : `${escapeHtml(cardName(id))}<div class="cost">${c.cost}</div>`;
-    }
-    cell.style.border = `2px solid ${hex(RARITY_COLOR[c.rarity])}`;
-    deck.appendChild(cell);
+    deck.appendChild(cardTile({
+      cardId: id,
+      size: 'sm',
+      costText: cooldownMode ? `${c.cooldownSec}s` : undefined,
+    }));
   }
 
   node.querySelector<HTMLButtonElement>('#battle')!.onclick = () => { haptic('light'); nav.toBattle(); };
@@ -331,7 +355,7 @@ function showSeasonReward(reward: SeasonReward, nav: Nav): void {
     } catch (e) {
       btn.disabled = false;
       haptic('error');
-      alert((e as Error).message);
+      toast((e as Error).message, 'error');
     }
   };
 }
@@ -370,7 +394,7 @@ function renderChestBar(bar: HTMLDivElement, nav: Nav): void {
           <button class="chest-act secondary" ${anyUnlocking ? 'disabled' : ''}>${t('chest.start')}</button>`;
         cell.querySelector<HTMLButtonElement>('.chest-act')!.onclick = async () => {
           try { state.profile = (await api.unlockChest(chest.id)).profile; haptic('light'); paint(); }
-          catch (e) { alert((e as Error).message); }
+          catch (e) { toast((e as Error).message, 'error'); }
         };
       } else if (st === 'unlocking') {
         const cost = gemsToSkip(chest, now);
@@ -400,7 +424,7 @@ async function openChestFlow(nav: Nav, chest: ChestSlot, withGems: boolean, repa
     showChestReward(chest, rewards);
   } catch (e) {
     haptic('error');
-    alert((e as Error).message);
+    toast((e as Error).message, 'error');
     repaint();
   }
 }
@@ -408,14 +432,9 @@ async function openChestFlow(nav: Nav, chest: ChestSlot, withGems: boolean, repa
 function showChestReward(chest: ChestSlot, rewards: { gold: number; cards: Record<string, number> }): void {
   const overlay = div('modal-overlay');
   const art = uiImageUrl(`chest_${chest.rarity}`);
-  const cardTiles = Object.entries(rewards.cards).map(([id, n]) => {
-    const c = getCard(id);
-    const ca = cardImageUrl(id);
-    const bg = ca
-      ? `background-image:url(${ca});background-size:contain;background-repeat:no-repeat;background-position:center`
-      : `background:${c ? hex(c.color) : '#555'}`;
-    return `<div class="reward"><div class="reward-card" style="${bg}"></div><b>×${n}</b></div>`;
-  }).join('');
+  const cardTiles = Object.entries(rewards.cards).map(([id, n]) =>
+    `<div class="reward"><div class="reward-card">${cardTileHtml({ cardId: id, size: 'xs', showCost: false })}</div><b>×${n}</b></div>`,
+  ).join('');
   overlay.innerHTML = `
     <div class="modal card col" style="align-items:center">
       <h2>${escapeHtml(t(`chest.rarity.${chest.rarity}`))}</h2>
@@ -453,7 +472,7 @@ export async function renderDaily(nav: Nav): Promise<void> {
     <div class="card col" id="login"></div>
     <h2>${t('daily.questsTitle')}</h2>
     <div class="col" id="quests"></div>`;
-  setUI(node);
+  setUI(node, { screen: 'daily' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
 
   const loginEl = node.querySelector<HTMLDivElement>('#login')!;
@@ -481,7 +500,7 @@ export async function renderDaily(nav: Nav): Promise<void> {
       </button>`;
     loginEl.querySelector<HTMLButtonElement>('#claim-login')!.onclick = async () => {
       try { state.profile = (await api.claimDaily()).profile; haptic('success'); paint(); }
-      catch (e) { haptic('error'); alert((e as Error).message); }
+      catch (e) { toast((e as Error).message, 'error'); }
     };
 
     // --- Quests ---
@@ -504,7 +523,7 @@ export async function renderDaily(nav: Nav): Promise<void> {
         </div>`;
       item.querySelector<HTMLButtonElement>('.quest-claim')!.onclick = async () => {
         try { state.profile = (await api.claimQuest(q.id)).profile; haptic('success'); paint(); }
-        catch (e) { haptic('error'); alert((e as Error).message); }
+        catch (e) { toast((e as Error).message, 'error'); }
       };
       questsEl.appendChild(item);
     }
@@ -529,7 +548,7 @@ export async function renderLeaderboard(nav: Nav): Promise<void> {
       <button id="tab-clans" class="secondary grow">${t('lb.clans')}</button>
     </div>
     <div id="lb-body" class="col">${t('common.loading')}</div>`;
-  setUI(node);
+  setUI(node, { screen: 'leaderboard' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const body = node.querySelector<HTMLDivElement>('#lb-body')!;
   const tabP = node.querySelector<HTMLButtonElement>('#tab-players')!;
@@ -585,7 +604,7 @@ export async function renderWar(nav: Nav): Promise<void> {
       <button id="back" class="secondary">${t('common.back')}</button>
     </div>
     <div id="war-body" class="col">${t('common.loading')}</div>`;
-  setUI(node);
+  setUI(node, { screen: 'war' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const body = node.querySelector<HTMLDivElement>('#war-body')!;
 
@@ -623,7 +642,7 @@ export async function renderWar(nav: Nav): Promise<void> {
         state.profile = (await api.claimWar()).profile;
         haptic('success');
         paint(await api.clanWar());
-      } catch (e) { haptic('error'); alert((e as Error).message); }
+      } catch (e) { toast((e as Error).message, 'error'); }
     });
   };
 
@@ -680,7 +699,7 @@ export async function renderShop(nav: Nav): Promise<void> {
     <h2>${t('shop.gold')}</h2>
     <div class="muted" style="margin-bottom:6px">${t('shop.goldHint')}</div>
     ${goldPacks}`;
-  setUI(node);
+  setUI(node, { screen: 'shop' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const refresh = () => {
     node.querySelector<HTMLElement>('#shop-gold')!.textContent = String(state.profile!.gold);
@@ -697,7 +716,7 @@ export async function renderShop(nav: Nav): Promise<void> {
         refresh();
       } catch (e) {
         haptic('error');
-        alert((e as Error).message);
+        toast((e as Error).message, 'error');
       } finally {
         btn.disabled = false;
       }
@@ -730,11 +749,11 @@ export async function renderShop(nav: Nav): Promise<void> {
             haptic('success');
             refresh();
           } else if (status === 'unsupported') {
-            alert(t('shop.openInTelegram'));
+            toast(t('shop.openInTelegram'), 'info');
           }
         } catch (e) {
           haptic('error');
-          alert((e as Error).message);
+          toast((e as Error).message, 'error');
         } finally {
           btn.disabled = false;
         }
@@ -762,7 +781,7 @@ export function renderFriendly(nav: Nav): void {
       <button id="join" class="secondary">${t('friendly.join')}</button>
       <div class="error" id="err"></div>
     </div>`;
-  setUI(node);
+  setUI(node, { screen: 'friendly' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   node.querySelector<HTMLButtonElement>('#host')!.onclick = () => { haptic('light'); nav.toFriendlyHost(); };
 
@@ -793,7 +812,7 @@ export async function renderBattlePass(nav: Nav): Promise<void> {
       <button id="back" class="secondary">${t('common.back')}</button>
     </div>
     <div id="bp-body" class="col">${t('common.loading')}</div>`;
-  setUI(node);
+  setUI(node, { screen: 'battlepass' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const body = node.querySelector<HTMLDivElement>('#bp-body')!;
 
@@ -834,18 +853,24 @@ export async function renderBattlePass(nav: Nav): Promise<void> {
       ${rows}`;
 
     body.querySelector<HTMLButtonElement>('#buy-premium')?.addEventListener('click', async () => {
-      if (!confirm(t('pass.confirmPremium', { n: info.premiumCost }))) return;
+      const ok = await confirmSheet({
+        title: t('pass.premium'),
+        message: t('pass.confirmPremium', { n: info.premiumCost }),
+        confirmLabel: t('common.ok'),
+        cancelLabel: t('common.cancel'),
+      });
+      if (!ok) return;
       try { state.profile = (await api.buyBattlePassPremium()).profile; haptic('success'); paint(await api.battlePass()); }
-      catch (e) { haptic('error'); alert((e as Error).message); }
+      catch (e) { toast((e as Error).message, 'error'); }
     });
     body.querySelector<HTMLButtonElement>('#claim-all')?.addEventListener('click', async () => {
       try {
         const r = await api.claimBattlePass();
         state.profile = r.profile;
         haptic('success');
-        alert(t('pass.claimed', { gold: r.gold, gems: r.gems }));
+        toast(t('pass.claimed', { gold: r.gold, gems: r.gems }), 'success');
         paint(await api.battlePass());
-      } catch (e) { haptic('error'); alert((e as Error).message); }
+      } catch (e) { toast((e as Error).message, 'error'); }
     });
   };
 
@@ -889,7 +914,7 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
     <div class="error" id="err"></div>
     <button id="save" class="accent">${t('trio.save')} (${selected.size}/${TRIO_SIZE})</button>
   `;
-  setUI(node);
+  setUI(node, { screen: 'trio' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => (opts.onBack ? opts.onBack() : nav.toMenu());
 
   const grid = node.querySelector<HTMLDivElement>('#grid')!;
@@ -930,21 +955,21 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
     if (!c || !cs) continue;
     const locked = !isCardUnlocked(id, p.trophies);
     const cell = div('col-card trio-pick');
-    cell.style.borderColor = hex(RARITY_COLOR[c.rarity]);
-    const art = cardImageUrl(id);
-    const bg = art
-      ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center top`
-      : `background:${hex(c.color)}`;
-    cell.innerHTML = `
-      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cooldownSec}s</span>${locked ? '<span class="col-lock">🔒</span>' : ''}</div>
-      ${locked
+    cell.innerHTML = cardTileHtml({
+      cardId: id,
+      size: 'md',
+      costText: `${c.cooldownSec}s`,
+      state: locked ? 'locked' : selected.has(id) ? 'selected' : 'normal',
+    })
+      + (locked
         ? `<div class="col-unlock">${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>`
-        : `<div class="col-lvl">${t('col.level', { n: cs.level })}</div>`}
-      <span class="pair-badge" style="display:none">${t('pairs.badge')}</span>`;
+        : `<div class="col-lvl">${t('col.level', { n: cs.level })}</div>`)
+      + `<span class="pair-badge" style="display:none">${t('pairs.badge')}</span>`;
     if (locked) {
       // Visible but not selectable — the server enforces the same gate on save.
       cell.classList.add('locked');
     } else {
+      const tile = cell.querySelector<HTMLElement>('.ct')!;
       cell.classList.toggle('picked', selected.has(id));
       cell.onclick = () => {
         if (selected.has(id)) {
@@ -953,7 +978,9 @@ export async function renderTrioPicker(nav: Nav, opts: TrioPickerOpts = {}): Pro
           if (selected.size >= TRIO_SIZE) return;
           selected.add(id);
         }
-        cell.classList.toggle('picked', selected.has(id));
+        const on = selected.has(id);
+        cell.classList.toggle('picked', on);
+        setTileState(tile, on ? 'selected' : 'normal');
         haptic('light');
         refreshSave();
       };
@@ -997,7 +1024,7 @@ export async function renderCollection(nav: Nav): Promise<void> {
     </div>
     <div class="collection" id="grid"></div>
   `;
-  setUI(node);
+  setUI(node, { screen: 'collection' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
 
   const grid = node.querySelector<HTMLDivElement>('#grid')!;
@@ -1012,18 +1039,22 @@ export async function renderCollection(nav: Nav): Promise<void> {
     const need = cardsToUpgrade(cs.level);
     const ready = cs.level < MAX_CARD_LEVEL && cs.count >= need && p.gold >= goldToUpgrade(cs.level);
     const cell = div('col-card');
-    if (locked) cell.classList.add('locked'); // greyed, but detail/upgrade still open — only the trio is gated
-    cell.style.borderColor = hex(RARITY_COLOR[c.rarity]);
-    const art = cardImageUrl(id);
-    const bg = art
-      ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center top`
-      : `background:${hex(c.color)}`;
-    cell.innerHTML = `
-      <div class="col-art" style="${bg}">${art ? '' : escapeHtml(cardName(id))}<span class="col-cost">${c.cost}</span>${locked ? '<span class="col-lock">🔒</span>' : ''}</div>
-      <div class="col-lvl">${t('col.level', { n: cs.level })}${ready ? ' <span class="up-dot">⬆</span>' : ''}</div>
-      <div class="col-bar"><div class="col-fill" style="width:${Math.min(100, (cs.count / (need === Infinity ? cs.count || 1 : need)) * 100)}%"></div></div>
-      <div class="muted col-count">${cs.level >= MAX_CARD_LEVEL ? t('col.maxLevel') : t('col.cards', { have: cs.count, need })}</div>
-      ${locked ? `<div class="col-unlock">${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>` : ''}`;
+    // Greyed, but detail/upgrade stay open — only the trio picker is gated.
+    if (locked) cell.classList.add('locked');
+    cell.innerHTML = cardTileHtml({
+      cardId: id,
+      size: 'md',
+      state: locked ? 'locked' : 'normal',
+      badges: ready ? ['upgrade'] : undefined,
+    })
+      + `<div class="col-lvl">${t('col.level', { n: cs.level })}${ready ? ' <span class="up-dot">⬆</span>' : ''}</div>`
+      + ProgressBar.html({
+        kind: 'xp', height: 6,
+        value: cs.count / (need === Infinity ? cs.count || 1 : need),
+        className: 'col-bar',
+      })
+      + `<div class="muted col-count">${cs.level >= MAX_CARD_LEVEL ? t('col.maxLevel') : t('col.cards', { have: cs.count, need })}</div>`
+      + (locked ? `<div class="col-unlock">${escapeHtml(t('col.unlocksIn', { league: unlockLeagueName(id) }))}</div>` : '');
     cell.onclick = () => openCardDetail(nav, id);
     grid.appendChild(cell);
   }
@@ -1091,7 +1122,7 @@ export async function renderClans(nav: Nav): Promise<void> {
   setGameVisible(false);
   const node = div('screen');
   node.innerHTML = `<div class="row space-between"><h1>${t('clans.title')}</h1><button id="back" class="secondary">${t('common.back')}</button></div><div id="body" class="col">${t('common.loading')}</div>`;
-  setUI(node);
+  setUI(node, { screen: 'clans' });
   node.querySelector<HTMLButtonElement>('#back')!.onclick = () => nav.toMenu();
   const body = node.querySelector<HTMLDivElement>('#body')!;
 
@@ -1130,7 +1161,7 @@ async function renderClanBrowser(nav: Nav, body: HTMLDivElement): Promise<void> 
     btn.disabled = full;
     btn.onclick = async () => {
       try { await api.joinClan(c.id); haptic('success'); nav.toClans(); }
-      catch (e) { alert((e as Error).message); }
+      catch (e) { toast((e as Error).message, 'error'); }
     };
     item.appendChild(btn);
     list.appendChild(item);
@@ -1173,7 +1204,7 @@ async function renderClanDetail(nav: Nav, body: HTMLDivElement, clanId: string):
       kick.textContent = t('clans.kick');
       kick.onclick = async () => {
         try { await api.kick(clan.id, m.userId); nav.toClans(); }
-        catch (e) { alert((e as Error).message); }
+        catch (e) { toast((e as Error).message, 'error'); }
       };
       item.appendChild(kick);
     }
@@ -1183,6 +1214,6 @@ async function renderClanDetail(nav: Nav, body: HTMLDivElement, clanId: string):
   body.querySelector<HTMLButtonElement>('#boss')!.onclick = () => nav.toBoss(clan.id);
   body.querySelector<HTMLButtonElement>('#leave')!.onclick = async () => {
     try { await api.leaveClan(); haptic('light'); nav.toClans(); }
-    catch (e) { alert((e as Error).message); }
+    catch (e) { toast((e as Error).message, 'error'); }
   };
 }

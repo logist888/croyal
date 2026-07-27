@@ -1,0 +1,135 @@
+/*
+ * Styles for the shared primitives in primitives.ts. Everything here is driven
+ * by tokens.css — no raw colours, radii or durations.
+ */
+
+/* ------------------------------------------------------------------ Button */
+
+.btn-label { display: inline-block; }
+
+button.btn-sm { padding: var(--s-2) var(--s-4); font-size: var(--fs-base); border-radius: var(--r-sm); --edge-btn: 3px; }
+button.btn-lg { padding: var(--s-7) var(--s-8); font-size: var(--fs-2xl); border-radius: var(--r-xl); }
+button.btn-xl { padding: var(--s-8) var(--s-9); font-size: var(--fs-3xl); border-radius: var(--r-xl); }
+
+button.ghost {
+  background: transparent; color: var(--text-2);
+  box-shadow: inset 0 0 0 2px var(--border-hair);
+}
+button.ghost:active { box-shadow: inset 0 0 0 2px var(--border); transform: translateY(2px); }
+
+/* Notification dot, positioned over the button's top-right corner. */
+button { overflow: visible; }
+.btn-dot { position: absolute; top: -3px; right: -3px; }
+
+/* Loading state keeps the button's size so the layout doesn't jump. */
+button.is-loading .btn-label { visibility: hidden; }
+button.is-loading::after {
+  content: ''; position: absolute; inset: 0; margin: auto;
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 3px solid rgb(255 255 255 / 0.3); border-top-color: var(--c-white);
+  animation: spin 0.7s linear infinite;
+}
+
+/* ------------------------------------------------------------------- Panel */
+
+.panel-head { margin-bottom: var(--s-4); }
+.panel-head h2 { margin: 0; }
+
+.card.panel-glass {
+  background: var(--surface-glass);
+  border: 1px solid var(--border-hair);
+  box-shadow: var(--sh-2);
+  backdrop-filter: blur(6px);
+}
+.card.panel-flat {
+  background: var(--surface-glass-soft);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+/* -------------------------------------------------------------------- Icon */
+
+.icon {
+  display: inline-block; vertical-align: -0.18em; flex: none;
+  width: var(--icon-size, 16px); height: var(--icon-size, 16px);
+  background-size: contain; background-repeat: no-repeat; background-position: center;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.45));
+}
+/* Emoji fallback while an icon asset is missing — sized to match the real one. */
+.icon-emoji {
+  font-size: calc(var(--icon-size, 16px) * 0.95);
+  line-height: 1; font-style: normal; text-align: center;
+}
+
+/* ------------------------------------------------------------- ProgressBar */
+
+.bar {
+  position: relative; height: var(--bar-h, 10px); border-radius: var(--r-pill);
+  background: var(--c-wood-975); border: 1px solid var(--border);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%; width: 0%;
+  transition: width var(--dur-3) var(--ease-out);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.bar-seg {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: repeating-linear-gradient(
+    90deg, transparent 0 calc(100% / var(--bar-seg) - 2px),
+    rgb(0 0 0 / 0.55) calc(100% / var(--bar-seg) - 2px) calc(100% / var(--bar-seg)));
+}
+
+.bar-elixir { --bar-h: 18px; background: var(--c-elixir-track); border-color: var(--c-elixir-edge); }
+.bar-elixir .bar-fill {
+  background: linear-gradient(180deg, var(--c-elixir-mid), var(--c-elixir));
+  transition: width 0.1s linear; /* elixir must track the server, not glide */
+}
+.bar-xp .bar-fill { background: linear-gradient(90deg, var(--c-blue-400), var(--c-blue-800)); }
+.bar-hp .bar-fill { background: linear-gradient(180deg, var(--success), #2e7d32); }
+.bar-chest .bar-fill { background: linear-gradient(90deg, var(--c-blue-300), var(--c-blue-700)); }
+
+/* ------------------------------------------------------------------- Toast */
+
+.toast-host {
+  position: fixed; top: calc(var(--sa-top) + var(--s-3)); left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex; flex-direction: column; gap: var(--s-2);
+  width: min(92vw, 420px); pointer-events: none;
+}
+.toast {
+  pointer-events: auto; cursor: pointer;
+  background: linear-gradient(180deg, var(--surface-1), var(--surface-2));
+  border: 2px solid var(--border); border-radius: var(--r-md);
+  padding: var(--s-4) var(--s-5);
+  font-size: var(--fs-lg); font-weight: 800; color: var(--text-1);
+  box-shadow: var(--sh-inset-hi), 0 3px 0 var(--surface-edge), var(--sh-3);
+  text-align: center;
+}
+.toast-success { border-color: var(--success); }
+.toast-error { border-color: var(--c-red-400); }
+
+/* ------------------------------------------------------------ Modal/Sheet */
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgb(0 0 0 / 0.62);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s-7); z-index: var(--z-modal);
+  opacity: 0; /* the veil fade needs something to fade from */
+}
+.modal { width: 100%; max-width: 360px; }
+
+.sheet-overlay { align-items: flex-end; padding: 0; }
+.modal.sheet {
+  max-width: 480px; width: 100%;
+  border-radius: var(--r-2xl) var(--r-2xl) 0 0;
+  border-bottom: none;
+  padding-bottom: calc(var(--s-7) + var(--sa-bottom));
+  box-shadow: var(--sh-inset-hi), var(--sh-4);
+}
+/* A grab handle reads as "you can dismiss this". */
+.modal.sheet::before {
+  content: ''; display: block; width: 42px; height: 4px; margin: 0 auto var(--s-5);
+  border-radius: var(--r-pill); background: rgb(255 255 255 / 0.25);
+}

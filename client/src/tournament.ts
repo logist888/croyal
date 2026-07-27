@@ -31,7 +31,7 @@ export async function startTournament(nav: Nav): Promise<void> {
       </div>
       <div class="muted">${t('tourney.intro')}</div>
       <button id="start" class="accent big-battle">${t('tourney.start')}</button>`;
-    setUI(node);
+    setUI(node, { screen: 'tournament' });
     node.querySelector<HTMLButtonElement>('#back')!.onclick = back;
     node.querySelector<HTMLButtonElement>('#start')!.onclick = () => { haptic('light'); socket.send({ t: 'tournamentCreate' }); };
   }
@@ -82,7 +82,7 @@ export async function startTournament(nav: Nav): Promise<void> {
       </div>
       ${bracket}
       ${action}`;
-    setUI(node);
+    setUI(node, { screen: 'tournament' });
     node.querySelector<HTMLButtonElement>('#back')!.onclick = back;
     node.querySelector<HTMLButtonElement>('#play')?.addEventListener('click', () => {
       haptic('light');

@@ -6,6 +6,7 @@
 import { STARTER_BOX_COUNT, STARTER_POOL, getCard, RARITY_COLOR } from '@croyal/shared';
 import { api } from './net';
 import { state } from './state';
+import { cardTileHtml } from './ui/card-tile';
 import { setUI, setGameVisible, escapeHtml, hex, logoHtml, renderTrioPicker, type Nav } from './ui';
 import { haptic } from './telegram';
 import { t, cardName } from './i18n';
@@ -29,20 +30,13 @@ export function renderOnboarding(nav: Nav): void {
     <div class="starter-grid" id="boxes"></div>
     <button id="assemble" class="accent" style="display:none">${t('onboard.assemble')}</button>
   `;
-  setUI(node);
+  setUI(node, { screen: 'onboarding' });
 
   const grid = node.querySelector<HTMLDivElement>('#boxes')!;
   const assemble = node.querySelector<HTMLButtonElement>('#assemble')!;
 
   function cardFace(cardId: string): string {
-    const c = getCard(cardId)!;
-    const art = cardImageUrl(cardId);
-    const bg = art
-      ? `background-image:url(${art});background-size:contain;background-repeat:no-repeat;background-position:center`
-      : `background:${hex(c.color)}`;
-    return `<div class="starter-card revealed" style="${bg};border-color:${hex(RARITY_COLOR[c.rarity])}">
-      ${art ? '' : `<span>${escapeHtml(cardName(cardId))}</span>`}
-    </div>`;
+    return cardTileHtml({ cardId, size: 'md', className: 'starter-card revealed' });
   }
 
   function render(): void {

@@ -6,31 +6,62 @@ import { state } from './state';
 import { initTelegram, getInitData, getDevUser, suggestedLanguage } from './telegram';
 import { renderRegister, renderMenu, renderClans, renderCollection, renderTrioPicker, renderDaily, renderLeaderboard, renderFriendly, renderWar, renderShop, renderBattlePass, setUI, logoHtml, type Nav } from './ui';
 import { renderOnboarding, needsOnboarding } from './onboarding';
-import { startBattle } from './battle';
-import { startReplay } from './replay';
 import { startTournament } from './tournament';
-import { startBoss } from './boss';
 import { t, setLang, type Lang } from './i18n';
-import { loadAssetManifest, menuBgUrl } from './assets';
+import { loadAssetManifest, menuBgUrl, uiImageUrl } from './assets';
+import { applyRarityTokens } from './ui/tokens';
+import { setIconResolver } from './ui/primitives';
+import { startPerfOverlay } from './dev/perf';
+
+// Phaser (~1.6 MB) lives behind these three modules. Importing them lazily keeps
+// it out of the entry bundle so the register/menu screen paints immediately;
+// the chunk is prefetched while the player sits in the hub (see prefetchArena).
+const lazyBattle = () => import('./battle');
+const lazyBoss = () => import('./boss');
+const lazyReplay = () => import('./replay');
+
+/** Run a lazily-imported screen, showing a placeholder while its chunk loads. */
+function lazy<T>(load: () => Promise<T>, run: (mod: T) => unknown): void {
+  let settled = false;
+  // Only show the loading card if the chunk isn't already warm — otherwise a
+  // cached import flashes the placeholder for one frame.
+  const timer = setTimeout(() => { if (!settled) loading(t('common.loading')); }, 80);
+  void load().then((mod) => { settled = true; clearTimeout(timer); run(mod); })
+    .catch(() => { settled = true; clearTimeout(timer); loading(t('common.serverUnreachable', { msg: 'chunk' })); });
+}
+
+/** Warm the battle chunk while the player idles in the hub (import() is cached). */
+let prefetched = false;
+function prefetchArena(): void {
+  if (prefetched) return;
+  prefetched = true;
+  const go = () => { void lazyBattle(); };
+  if ('requestIdleCallback' in window) (window as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(go);
+  else setTimeout(go, 1200);
+}
 
 const nav: Nav = {
   // Every "go home" routes through the onboarding gate until the starter
   // boxes are opened and the first trio saved.
-  toMenu: () => (needsOnboarding() ? renderOnboarding(nav) : renderMenu(nav)),
+  toMenu: () => {
+    if (needsOnboarding()) return renderOnboarding(nav);
+    renderMenu(nav);
+    prefetchArena();
+  },
   toRegister: (opts) => renderRegister(nav, opts),
   toClans: () => { void renderClans(nav); },
-  toBattle: () => { void startBattle(nav); },
-  toBoss: (clanId) => { void startBoss(nav, clanId); },
+  toBattle: () => lazy(lazyBattle, (m) => m.startBattle(nav)),
+  toBoss: (clanId) => lazy(lazyBoss, (m) => m.startBoss(nav, clanId)),
   toCollection: () => { void renderCollection(nav); },
   toTrio: () => { void renderTrioPicker(nav); },
   toDaily: () => { void renderDaily(nav); },
   toLeaderboard: () => { void renderLeaderboard(nav); },
   toFriendly: () => renderFriendly(nav),
-  toFriendlyHost: () => { void startBattle(nav, { kind: 'friendly-host' }); },
-  toFriendlyGuest: (code) => { void startBattle(nav, { kind: 'friendly-guest', code }); },
-  toReplay: () => { void startReplay(nav); },
+  toFriendlyHost: () => lazy(lazyBattle, (m) => m.startBattle(nav, { kind: 'friendly-host' })),
+  toFriendlyGuest: (code) => lazy(lazyBattle, (m) => m.startBattle(nav, { kind: 'friendly-guest', code })),
+  toReplay: () => lazy(lazyReplay, (m) => m.startReplay(nav)),
   toTournament: () => { void startTournament(nav); },
-  toTournamentMatch: () => { void startBattle(nav, { kind: 'tournament' }, () => nav.toTournament()); },
+  toTournamentMatch: () => lazy(lazyBattle, (m) => m.startBattle(nav, { kind: 'tournament' }, () => nav.toTournament())),
   toWar: () => { void renderWar(nav); },
   toShop: () => { void renderShop(nav); },
   toBattlePass: () => { void renderBattlePass(nav); },
@@ -40,13 +71,18 @@ function loading(text: string) {
   const node = document.createElement('div');
   node.className = 'screen';
   node.innerHTML = `${logoHtml()}<div class="card"><div class="muted">${text}</div></div>`;
-  setUI(node);
+  setUI(node, { screen: 'loading' });
 }
 
 async function boot() {
   initTelegram();
+  applyRarityTokens(); // --rarity-* comes from the shared catalog, not from CSS
+  startPerfOverlay(); // no-op unless ?fps=1
   loading(t('common.connecting'));
   await loadAssetManifest();
+  // Icons resolve through assets.ts once the manifest is in; until then (and for
+  // any icon with no art yet) Icon() falls back to the emoji the UI used before.
+  setIconResolver(uiImageUrl);
 
   const bg = menuBgUrl();
   if (bg) {

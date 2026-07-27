@@ -12,6 +12,7 @@ import {
   nextCardHtml, setNextCard, type HandUI, type TrioUI,
 } from './hud';
 import { beginCardDrag } from './deploy-drag';
+import { toast } from './ui/primitives';
 import { haptic } from './telegram';
 import { t } from './i18n';
 import { cardImageUrl } from './assets';
@@ -48,7 +49,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
       : `${elixirBarHtml()}
          <div class="handbar">${nextCardHtml()}<div class="hand" id="hand"></div></div>`}
     <div class="card"><div class="muted">${t('boss.raiders')}</div><div id="parts"></div></div>`;
-  setUI(root);
+  setUI(root, { screen: 'boss' });
   setGameVisible(false);
 
   root.querySelector<HTMLButtonElement>('#leave')!.onclick = () => {
@@ -93,7 +94,6 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
           socket.send({ t: 'bossDeploy', cardId: id, x: tile.x, y: tile.y });
           hand?.clearSelection();
         },
-        cardArt: (id) => cardImageUrl(id),
         setHoldRender: (h) => hand?.setRenderHold(h),
       }),
     });
@@ -116,7 +116,12 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
   });
 
   function onSnapshot(snap: BossSnapshot) {
-    field?.render(snap.entities);
+    field?.render(snap.entities, snap.tick);
+    // NOTE: raids get spawn pops, gait, hit flashes, damage numbers and death
+    // topples (all derived client-side from the snapshot), but no projectile or
+    // impact effects: the boss loop is bespoke and never emits AttackEvents, so
+    // BossSnapshot has no `events` field to forward. Adding those needs a
+    // server-side change to server/src/game/boss.ts.
     if (cooldownMode) {
       trio?.setCooldowns(snap.cooldowns ?? []);
     } else {
@@ -157,7 +162,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
           .join('')}
       </div>
       <button id="ok" class="accent">${t('boss.backToClan')}</button>`;
-    setUI(node);
+    setUI(node, { screen: 'result' });
     node.querySelector<HTMLButtonElement>('#ok')!.onclick = () => nav.toClans();
   }
 
@@ -173,7 +178,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     else if (msg.t === 'bossEnd') showResult(msg.result);
     else if (msg.t === 'error') {
       cleanup();
-      alert(msg.error);
+      toast(msg.error, 'error');
       nav.toClans();
     }
   });

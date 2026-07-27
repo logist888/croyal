@@ -1,0 +1,183 @@
+/*
+ * CardTile — one card look for the hand, trio, deck strip, collection, picker,
+ * chest reward and onboarding reveal.
+ *
+ * The rarity frame is built here rather than from assets/ui/frame_*.png: those
+ * are 64x64 with square ornate corners and transparent margins (they distort on
+ * a 3:4 tile), frame_common has an opaque centre that would hide the art, and
+ * frame_legendary does not exist. See card-tile.ts.
+ */
+
+.ct {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  isolation: isolate;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: pointer;
+  touch-action: none;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-4));
+  /* rarity drives everything below; defaults to common */
+  --ct-rarity: var(--rarity-common);
+}
+.ct[data-rarity="rare"]      { --ct-rarity: var(--rarity-rare); }
+.ct[data-rarity="epic"]      { --ct-rarity: var(--rarity-epic); }
+.ct[data-rarity="legendary"] { --ct-rarity: var(--rarity-legendary); }
+
+/* Size ladder. Width comes from the grid; these only scale the type. */
+.ct-xs { --ct-fs: var(--fs-2xs); --ct-cost: 16px; --ct-pad: 2px; }
+.ct-sm { --ct-fs: var(--fs-xs);  --ct-cost: 18px; --ct-pad: 3px; }
+.ct-md { --ct-fs: var(--fs-sm);  --ct-cost: 22px; --ct-pad: 4px; }
+.ct-lg { --ct-fs: var(--fs-base); --ct-cost: 26px; --ct-pad: 5px; }
+
+.ct-art {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: center top; background-repeat: no-repeat;
+}
+
+/* Gradient under the name/cost so text stays legible over any artwork. This is
+   what lets the cost badge coexist with real card art. */
+.ct-scrim {
+  position: absolute; inset: auto 0 0 0; height: 46%; z-index: 1;
+  background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.28) 45%, rgb(0 0 0 / 0.82));
+  pointer-events: none;
+}
+
+/*
+ * The frame: a rarity-tinted rim, an inner bevel highlight, a dark inner line to
+ * separate rim from art, and an outer glow. All one element, no assets.
+ */
+.ct-frame {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  border-radius: inherit;
+  border: 2px solid var(--ct-rarity);
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 0.55),          /* separates rim from art */
+    inset 0 2px 0 rgb(255 255 255 / 0.3),       /* top bevel */
+    inset 0 -3px 6px rgb(0 0 0 / 0.45),         /* bottom shade */
+    0 0 8px -1px var(--ct-rarity);              /* rarity glow */
+}
+.ct[data-rarity="legendary"] .ct-frame,
+.ct[data-rarity="epic"] .ct-frame { border-width: 3px; }
+.ct[data-rarity="legendary"] .ct-frame { box-shadow:
+  inset 0 0 0 1px rgb(0 0 0 / 0.55),
+  inset 0 2px 0 rgb(255 255 255 / 0.45),
+  inset 0 -3px 6px rgb(0 0 0 / 0.45),
+  0 0 14px -1px var(--ct-rarity); }
+
+/* Legendary shine sweep — the "this one is special" tell. */
+.ct-shine {
+  position: absolute; inset: -40% -60%; z-index: 2; pointer-events: none;
+  background: linear-gradient(100deg,
+    transparent 38%, rgb(255 255 255 / 0.42) 48%, rgb(255 255 255 / 0.05) 56%, transparent 62%);
+  transform: translateX(-120%);
+  animation: ct-shine 3.6s var(--ease-out) infinite;
+}
+@keyframes ct-shine {
+  0%, 62% { transform: translateX(-120%); }
+  86%, 100% { transform: translateX(120%); }
+}
+@media (prefers-reduced-motion: reduce) { .ct-shine { animation: none; opacity: 0; } }
+
+/* Elixir cost — top-left so it never fights the name. */
+.ct-cost {
+  position: absolute; top: var(--ct-pad); left: var(--ct-pad); z-index: 4;
+  width: var(--ct-cost); height: var(--ct-cost); line-height: calc(var(--ct-cost) - 4px);
+  border-radius: 50%; text-align: center;
+  background: radial-gradient(circle at 35% 30%, var(--c-elixir-lite), var(--c-elixir));
+  border: 2px solid var(--c-white); color: var(--c-white);
+  font-size: calc(var(--ct-cost) * 0.5); font-weight: 900;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.5);
+}
+
+/* Recharge seconds instead of an elixir price (cooldown battle model). */
+.ct-cost-cd {
+  background: radial-gradient(circle at 35% 30%, var(--c-blue-300), var(--c-blue-800));
+  font-size: calc(var(--ct-cost) * 0.42);
+}
+
+.ct-name {
+  position: absolute; left: 0; right: 0; bottom: var(--ct-pad); z-index: 4;
+  padding: 0 2px; text-align: center;
+  font-size: var(--ct-fs); font-weight: 900; color: var(--c-white);
+  text-shadow: 0 1px 2px #000, 0 0 4px rgb(0 0 0 / 0.8);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* With a footer strip the name has to move up out of its way. */
+.ct-has-footer .ct-name { bottom: calc(var(--ct-fs) + 4px); }
+.ct-has-footer .ct-scrim { height: 54%; }
+
+.ct-footer {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  padding: 1px 0; text-align: center;
+  font-size: var(--ct-fs); font-weight: 800; color: var(--text-1);
+  background: rgb(0 0 0 / 0.55);
+}
+.ct-footer-level { color: var(--accent); }
+
+/* Recharge veil (trio hand) fills from the bottom. */
+.ct-cd {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0%; z-index: 6;
+  background: rgb(10 14 20 / 0.72); pointer-events: none;
+  transition: height 0.1s linear;
+}
+.ct-cd-num {
+  position: absolute; inset: 0; z-index: 7; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--ct-cost) * 1.1); font-weight: 900; color: var(--c-white);
+  text-shadow: 0 2px 6px rgb(0 0 0 / 0.85);
+}
+
+/* Badges */
+.ct-badge {
+  position: absolute; z-index: 8; width: 14px; height: 14px; border-radius: 50%;
+  border: 1px solid rgb(0 0 0 / 0.5);
+}
+.ct-badge-pair    { top: -4px; right: -4px; background: var(--c-purple-800); box-shadow: 0 0 0 1px var(--accent-hi); }
+.ct-badge-upgrade { top: -4px; right: -4px; background: var(--success); box-shadow: 0 0 6px var(--success); }
+.ct-badge-new     { top: -4px; left: -4px;  background: var(--notify); box-shadow: 0 0 6px var(--notify); }
+
+/* ---- states ---- */
+
+.ct:active { transform: translateY(1px); }
+
+.ct[data-state="unaffordable"] { filter: grayscale(0.7) brightness(0.6); }
+.ct[data-state="unaffordable"]:active { transform: none; }
+
+.ct[data-state="locked"] { filter: grayscale(0.9); opacity: 0.65; cursor: default; }
+.ct[data-state="locked"]:active { transform: none; }
+
+.ct[data-state="cooling"] { filter: grayscale(0.5) brightness(0.85); cursor: default; }
+.ct[data-state="cooling"]:active { transform: none; }
+
+.ct[data-state="selected"],
+.ct[data-state="aiming"] {
+  outline: 3px solid var(--accent-hi); outline-offset: 1px;
+  transform: translateY(-3px);
+}
+.ct[data-state="aiming"] .ct-frame { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.55), 0 0 16px var(--accent-hi); }
+
+.ct[data-state="dragging"] { opacity: 0.35; }
+
+/* "Recharged" pop, fired by the trio hand on the cooling → ready edge. */
+.ct.is-ready { animation: ct-ready var(--dur-4) var(--ease-back-out); }
+@keyframes ct-ready {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.14); filter: brightness(1.45); }
+  100% { transform: scale(1); }
+}
+
+/* The drag ghost reuses the tile look at a fixed size. */
+.ct.ct-ghost {
+  position: fixed; z-index: var(--z-drag); width: 68px;
+  margin: -46px 0 0 -34px; pointer-events: none;
+  transform: scale(1.12);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.55);
+  filter: drop-shadow(0 0 8px rgb(255 255 255 / 0.35));
+}
+.ct.ct-ghost.invalid { filter: grayscale(0.7) brightness(0.7); }
