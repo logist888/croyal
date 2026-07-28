@@ -309,6 +309,9 @@ input[type="text"]::placeholder { color: var(--c-gold-dim); }
 
 .participant { display: flex; justify-content: space-between; font-size: var(--fs-lg); padding: 3px 2px; border-bottom: 1px solid rgb(255 255 255 / 0.08); }
 .participant b { color: var(--accent); }
+/* Damage + reward gold travel together on the right of the row (raid result
+   screen only — the live in-raid list has just name+damage and never uses this). */
+.participant-stats { display: flex; align-items: center; gap: var(--s-3); }
 
 /* ===== Hub (main menu) ===== */
 .topbar {

@@ -190,9 +190,22 @@ export const BOT_PLAY_JITTER_SECONDS = 1.0;
 export const BOSS_RAID_SECONDS = 180;
 export const BOSS_BASE_HP = 12000;
 export const BOSS_BASE_DAMAGE = 120;
-/** Co-op (2+ players) DOUBLES boss difficulty (HP and damage). */
-export const BOSS_COOP_MULTIPLIER = 2;
 export const BOSS_MAX_PLAYERS = 20; // a full clan can raid together
+/**
+ * Difficulty (HP/damage multiplier) by participant count. A large clan
+ * raiding together used to face the exact same boss as a two-person raid —
+ * this scales it so a full 20-person raid stays a real fight instead of a
+ * trivial pile-on. Read as "at least `min` participants -> `mult`"; the last
+ * matching entry wins.
+ */
+export const BOSS_DIFFICULTY_TIERS: Array<{ min: number; mult: number }> = [
+  { min: 1, mult: 1.0 },
+  { min: 2, mult: 1.6 },
+  { min: 4, mult: 2.4 },
+  { min: 7, mult: 3.2 },
+  { min: 11, mult: 4.2 },
+  { min: 16, mult: 5.2 },
+];
 /**
  * Cooldown economy: raider card cooldowns are stretched in boss raids as the
  * difficulty lever. The ONLY allowed cooldown asymmetry — there is no human

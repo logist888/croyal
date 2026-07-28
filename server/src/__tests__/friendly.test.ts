@@ -132,8 +132,8 @@ describe('friendly match awards nothing', () => {
       OPEN_BATTLE_CONFIG,
       false, // ranked
     );
-    match.handleLeave(b); // b forfeits -> a wins, +30 / -30
-    expect(store.getUser(a)!.trophies).toBe(530);
-    expect(store.getUser(b)!.trophies).toBe(470);
+    match.handleLeave(b); // b forfeits before any tower falls -> a wins 0-crown, b loses 0-crown
+    expect(store.getUser(a)!.trophies).toBe(520);
+    expect(store.getUser(b)!.trophies).toBe(488);
   });
 });

@@ -238,9 +238,14 @@ export interface BossSnapshot {
   cooldowns?: CardCooldown[];
 }
 
+/** A raid participant once the fight is over — carries their own payout. */
+export interface BossResultParticipant extends BossParticipant {
+  rewardGold: number;
+}
+
 export interface BossResult {
   outcome: 'win' | 'loss';
   bossMaxHp: number;
-  participants: BossParticipant[];
-  rewardGold: number;
+  /** Each entry's `rewardGold` is that player's own payout, weighted by damage share — not a flat split. */
+  participants: BossResultParticipant[];
 }

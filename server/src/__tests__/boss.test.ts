@@ -18,14 +18,25 @@ describe('clan boss co-op difficulty', () => {
     room.leave('u1'); // stop the loop
   });
 
-  it('DOUBLES difficulty when 2+ players raid together', () => {
+  it('scales difficulty up when 2+ players raid together', () => {
     const room = new BossRoom('clan2', () => {});
     room.join('u1', 'One', [...DEFAULT_DECK], noop);
     room.join('u2', 'Two', [...DEFAULT_DECK], noop);
-    expect(room.difficultyMultiplier).toBe(2);
-    expect(room.bossMaxHpValue).toBe(BOSS_BASE_HP * 2);
+    expect(room.difficultyMultiplier).toBe(1.6);
+    expect(room.bossMaxHpValue).toBe(BOSS_BASE_HP * 1.6);
     room.leave('u1');
     room.leave('u2');
+  });
+
+  it('keeps scaling past the old binary cap as more players join', () => {
+    // Used to be flat x2 at 2 players and forever after, however large the
+    // raid — a full 20-person clan raid was the exact same fight as a duo.
+    const room = new BossRoom('clanBig', () => {});
+    const ids = Array.from({ length: 16 }, (_, i) => `u${i}`);
+    for (const id of ids) room.join(id, id, [...DEFAULT_DECK], noop);
+    expect(room.difficultyMultiplier).toBe(5.2);
+    expect(room.difficultyMultiplier).toBeGreaterThan(2);
+    for (const id of ids) room.leave(id);
   });
 });
 
@@ -67,7 +78,7 @@ describe('boss raid cooldown economy', () => {
     const room = new BossRoom('clan6', () => {});
     room.join('u1', 'One', [...DEFAULT_DECK], noop);
     room.join('u2', 'Two', [...DEFAULT_DECK], noop);
-    expect(room.difficultyMultiplier).toBe(2);
+    expect(room.difficultyMultiplier).toBe(1.6);
     room.leave('u2');
     expect(room.difficultyMultiplier).toBe(1);
     room.leave('u1');

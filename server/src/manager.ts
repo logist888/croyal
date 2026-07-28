@@ -44,7 +44,21 @@ const FRIENDLY_CODE_LEN = 4;
 interface Waiting {
   userId: string;
   send: Sender;
+  trophies: number;
+  queuedAt: number;
   timer: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Trophy gap a waiting player will accept, as a function of how long they've
+ * been waiting. Starts tight (roughly one league) and doubles every second,
+ * so a thin queue still resolves before the bot-fallback timer fires — by
+ * BOT_FALLBACK_MS the range is already far wider than any real trophy spread
+ * (150 * 2^6 = 9600), so the bot only steps in when there is truly nobody to
+ * pair, not just nobody nearby.
+ */
+function maxGap(waitedMs: number): number {
+  return 150 * 2 ** (waitedMs / 1000);
 }
 
 export class GameManager {
@@ -52,7 +66,10 @@ export class GameManager {
   private userMatch = new Map<string, string>(); // userId -> matchId
   private bossRooms = new Map<string, BossRoom>(); // clanId -> room
   private userBoss = new Map<string, string>(); // userId -> clanId
-  private waiting: Waiting | null = null;
+  // Small pool, not a singleton: lets a same-instant queue() pick the best
+  // trophy-range match among everyone waiting, instead of blindly grabbing
+  // whoever queued first.
+  private waitingQueue: Waiting[] = [];
   private graceTimers = new Map<string, ReturnType<typeof setTimeout>>(); // userId -> forfeit timer
   // Friendly (unranked) rooms: a host opens one and shares the code; a guest joins by it.
   private friendlyRooms = new Map<string, { hostId: string; send: Sender; timer: ReturnType<typeof setTimeout> }>(); // code -> room
@@ -67,30 +84,42 @@ export class GameManager {
   // --- 1v1 matchmaking ---
   queue(userId: string, send: Sender): void {
     if (this.userMatch.has(userId)) return;
+    if (this.waitingQueue.some((w) => w.userId === userId)) return; // already waiting
     const profile = store.getUser(userId);
     if (!profile) return;
 
-    if (this.waiting && this.waiting.userId !== userId) {
-      const opponent = this.waiting;
-      clearTimeout(opponent.timer);
-      this.waiting = null;
+    // Pair with whichever waiting player has the smallest trophy gap that
+    // THEY are currently willing to accept — their tolerance widened by how
+    // long they've already waited. A fresh joiner brings no tolerance of
+    // their own; they only need to fall inside the waiting side's net.
+    const now = Date.now();
+    let best: Waiting | null = null;
+    let bestGap = Infinity;
+    for (const w of this.waitingQueue) {
+      const gap = Math.abs(w.trophies - profile.trophies);
+      if (gap > maxGap(now - w.queuedAt)) continue;
+      if (gap < bestGap) { best = w; bestGap = gap; }
+    }
+    if (best) {
+      clearTimeout(best.timer);
+      this.waitingQueue = this.waitingQueue.filter((w) => w !== best);
       this.createMatch(
-        { userId: opponent.userId, deck: deckOf(opponent.userId), send: opponent.send },
+        { userId: best.userId, deck: deckOf(best.userId), send: best.send },
         { userId, deck: battleDeckOf(profile), send },
       );
       return;
     }
 
-    if (this.waiting && this.waiting.userId === userId) return; // already waiting
     send({ t: 'queued' });
     const timer = setTimeout(() => this.matchWithBot(userId), BOT_FALLBACK_MS);
-    this.waiting = { userId, send, timer };
+    this.waitingQueue.push({ userId, send, trophies: profile.trophies, queuedAt: now, timer });
   }
 
   cancelQueue(userId: string): void {
-    if (this.waiting?.userId === userId) {
-      clearTimeout(this.waiting.timer);
-      this.waiting = null;
+    const w = this.waitingQueue.find((x) => x.userId === userId);
+    if (w) {
+      clearTimeout(w.timer);
+      this.waitingQueue = this.waitingQueue.filter((x) => x !== w);
     }
   }
 
@@ -175,9 +204,9 @@ export class GameManager {
   }
 
   private matchWithBot(userId: string): void {
-    if (this.waiting?.userId !== userId) return;
-    const human = this.waiting;
-    this.waiting = null;
+    const human = this.waitingQueue.find((w) => w.userId === userId);
+    if (!human) return;
+    this.waitingQueue = this.waitingQueue.filter((w) => w !== human);
     const profile = store.getUser(userId);
     if (!profile) return;
     this.createMatch(
@@ -440,9 +469,10 @@ export class GameManager {
         undefined,
         (result) => {
           // Persist the raid rewards — the bossEnd message alone grants nothing.
+          // Each participant's own rewardGold already reflects their damage share.
           for (const p of result.participants) {
             const u = store.getUser(p.userId);
-            if (u) store.updateUser(p.userId, { gold: u.gold + result.rewardGold });
+            if (u) store.updateUser(p.userId, { gold: u.gold + p.rewardGold });
           }
         },
       );

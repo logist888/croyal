@@ -1,16 +1,16 @@
 /**
  * Clan boss raid (co-op). Members of one clan fight a shared boss together.
- * Co-op (2+ simultaneous players) DOUBLES the boss difficulty (HP and damage).
- * Per-player damage is attributed for the reward screen.
+ * Difficulty (HP and damage) scales with participant count via
+ * BOSS_DIFFICULTY_TIERS. Per-player damage is attributed and drives payout.
  */
 import {
   TICK_DT, TICK_RATE, SNAPSHOT_RATE, ARENA_WIDTH, ARENA_HEIGHT,
   RIVER_Y, RIVER_HALF_HEIGHT, BRIDGE_X,
   ELIXIR_MAX, ELIXIR_START, ELIXIR_REGEN_SECONDS,
-  BOSS_RAID_SECONDS, BOSS_BASE_HP, BOSS_BASE_DAMAGE, BOSS_COOP_MULTIPLIER, BOSS_MAX_PLAYERS,
+  BOSS_RAID_SECONDS, BOSS_BASE_HP, BOSS_BASE_DAMAGE, BOSS_DIFFICULTY_TIERS, BOSS_MAX_PLAYERS,
   BOSS_RAIDER_COOLDOWN_MULT,
   getCard, type ServerMessage, type BossSnapshot, type EntitySnapshot, type BossResult,
-  type BattleConfig, type CardCooldown, type AttackEvent,
+  type BossResultParticipant, type BattleConfig, type CardCooldown, type AttackEvent,
 } from '@croyal/shared';
 import { ACTIVE_BATTLE_CONFIG } from './active-config';
 
@@ -54,6 +54,28 @@ const BOSS_RANGE = 3.5;
 /** Same cap the 1v1 simulation uses — a phone cannot express more than this. */
 const MAX_EVENTS_PER_WINDOW = 60;
 const BOSS_HIT_SPEED = 1.2;
+
+// Average per-raider payout at a "typical" contribution — matches what a flat
+// payout used to give everyone (200*mult on a win, 25 on a loss), but the pool
+// is now split by damage share instead of handed out identically.
+const BOSS_WIN_GOLD_PER_PLAYER = 200;
+const BOSS_LOSS_GOLD_PER_PLAYER = 50;
+/** Fraction of the pool split evenly regardless of contribution — a raider who
+ * did less still gets a floor, not zero, but can no longer match a top
+ * damage-dealer by doing nothing. */
+const REWARD_FLOOR_SHARE = 0.4;
+
+/** Split a gold pool among raiders: REWARD_FLOOR_SHARE evenly, the rest by damage share. */
+export function splitReward(pool: number, participants: Array<{ userId: string; damageDealt: number }>): Map<string, number> {
+  const n = participants.length;
+  if (n === 0) return new Map();
+  const totalDmg = participants.reduce((s, p) => s + p.damageDealt, 0);
+  return new Map(participants.map((p) => {
+    const share = totalDmg > 0 ? p.damageDealt / totalDmg : 1 / n;
+    const cut = pool * (REWARD_FLOOR_SHARE / n + (1 - REWARD_FLOOR_SHARE) * share);
+    return [p.userId, Math.floor(cut)];
+  }));
+}
 
 export class BossRoom {
   private participants = new Map<string, Participant>();
@@ -136,9 +158,13 @@ export class BossRoom {
     if (this.events.length < MAX_EVENTS_PER_WINDOW) this.events.push(ev);
   }
 
-  /** Co-op (2+) doubles boss HP and damage; difficulty is recomputed live. */
+  /** Difficulty scales with participant count (BOSS_DIFFICULTY_TIERS); recomputed live as players join/leave. */
   private recomputeDifficulty(): void {
-    const mult = this.participants.size >= 2 ? BOSS_COOP_MULTIPLIER : 1;
+    const n = this.participants.size;
+    let mult = BOSS_DIFFICULTY_TIERS[0].mult;
+    for (const tier of BOSS_DIFFICULTY_TIERS) {
+      if (n >= tier.min) mult = tier.mult;
+    }
     if (mult === this.multiplier) return;
     const frac = this.bossMaxHp > 0 ? this.bossHp / this.bossMaxHp : 1;
     this.multiplier = mult;
@@ -404,13 +430,18 @@ export class BossRoom {
     if (this.ended) return;
     this.ended = true;
     if (this.timer) clearInterval(this.timer);
+    const list = [...this.participants.values()];
+    // Idle/free-riding used to pay exactly as well as top damage — the pool
+    // is now fixed by raid size and outcome, then split by contribution.
+    const pool = (outcome === 'win' ? BOSS_WIN_GOLD_PER_PLAYER * this.multiplier : BOSS_LOSS_GOLD_PER_PLAYER) * list.length;
+    const reward = splitReward(pool, list);
     const result: BossResult = {
       outcome,
       bossMaxHp: this.bossMaxHp,
-      participants: [...this.participants.values()].map((x) => ({
+      participants: list.map((x): BossResultParticipant => ({
         userId: x.userId, nickname: x.nickname, damageDealt: Math.round(x.damageDealt),
+        rewardGold: reward.get(x.userId) ?? 0,
       })),
-      rewardGold: outcome === 'win' ? 200 * this.multiplier : 25,
     };
     for (const p of this.participants.values()) p.send({ t: 'bossEnd', result });
     this.onResult?.(result); // persist rewards (the message alone grants nothing)

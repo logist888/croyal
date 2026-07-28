@@ -22,8 +22,25 @@ export interface MatchSeat {
   send: Sender;
 }
 
-const WIN_TROPHIES = 30;
-const LOSS_TROPHIES = 30;
+/**
+ * Trophy/gold reward, scaled by crowns (towers destroyed by the SIDE BEING
+ * PAID, 0-3) rather than a flat win/loss amount.
+ *
+ * Deliberately not zero-sum: the average win pays out more than the average
+ * loss costs, so the ladder climbs faster than the old flat ±30. That's
+ * intentional — the monthly season reset (SEASON_RESET_FLOOR, shared/seasons)
+ * already halves any excess above the floor, so the climb doesn't run away
+ * forever. If it turns out too generous after real play, these two tables are
+ * the only numbers that need retuning.
+ */
+export function trophyReward(isWinner: boolean, crowns: number): number {
+  const c = Math.max(0, Math.min(3, crowns));
+  return isWinner ? [20, 24, 27, 30][c] : -[12, 10, 8, 6][c];
+}
+export function goldReward(isWinner: boolean, crowns: number): number {
+  const c = Math.max(0, Math.min(3, crowns));
+  return isWinner ? [40, 50, 60, 70][c] : [8, 10, 12, 14][c];
+}
 
 export class Match {
   private sim: Simulation;
@@ -203,8 +220,10 @@ export class Match {
       const seat = seatFor(side);
       if (!seat.userId) continue;
       const isWinner = side === winner;
-      const delta = this.friendly ? 0 : (isWinner ? WIN_TROPHIES : -LOSS_TROPHIES);
-      const { rewards, earnedChest } = this.persist(seat.userId, isWinner, delta);
+      const myCrowns = side === winner ? scoreWinner : scoreLoser;
+      const delta = this.friendly ? 0 : trophyReward(isWinner, myCrowns);
+      const goldGain = this.friendly ? 0 : goldReward(isWinner, myCrowns);
+      const { rewards, earnedChest } = this.persist(seat.userId, isWinner, delta, goldGain);
       const result: MatchResult = {
         outcome: isWinner ? 'win' : 'loss',
         reason,
@@ -223,12 +242,11 @@ export class Match {
    * drop a battle chest into a free slot (its cards are claimed later when the
    * chest is opened; see store.openChest). Cards are no longer granted instantly.
    */
-  private persist(userId: string, isWinner: boolean, delta: number): { rewards: BattleRewards; earnedChest: ChestRarity | null } {
+  private persist(userId: string, isWinner: boolean, delta: number, goldGain: number): { rewards: BattleRewards; earnedChest: ChestRarity | null } {
     const user = this.store.getUser(userId);
     if (!user) return { rewards: { gold: 0, cards: {} }, earnedChest: null };
     // Friendly matches are pure practice: no ladder, economy, or quest effects.
     if (this.friendly) return { rewards: { gold: 0, cards: {} }, earnedChest: null };
-    const goldGain = isWinner ? 50 : 10;
     this.store.updateUser(userId, {
       trophies: Math.max(0, user.trophies + delta),
       wins: user.wins + (isWinner ? 1 : 0),

@@ -12,7 +12,7 @@ import {
   nextCardHtml, setNextCard, type HandUI, type TrioUI,
 } from './hud';
 import { beginCardDrag } from './deploy-drag';
-import { toast } from './ui/primitives';
+import { toast, Icon } from './ui/primitives';
 import { haptic } from './telegram';
 import { t } from './i18n';
 import { cardImageUrl } from './assets';
@@ -134,7 +134,7 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
       t('boss.hp', { hp: snap.bossHp, max: snap.bossMaxHp });
     root.querySelector<HTMLSpanElement>('#timer')!.textContent = fmtTime(snap.timeLeft);
     const diff = root.querySelector<HTMLSpanElement>('#diff')!;
-    diff.textContent = snap.difficultyMultiplier >= 2 ? t('boss.coop', { n: snap.difficultyMultiplier }) : t('boss.solo');
+    diff.textContent = snap.difficultyMultiplier > 1 ? t('boss.coop', { n: snap.difficultyMultiplier }) : t('boss.solo');
 
     const parts = root.querySelector<HTMLDivElement>('#parts')!;
     parts.innerHTML = snap.participants
@@ -150,14 +150,19 @@ export async function startBoss(nav: Nav, clanId: string): Promise<void> {
     node.className = 'screen';
     const win = result.outcome === 'win';
     haptic(win ? 'success' : 'error');
+    // Reward is no longer a flat number everyone shares — it's weighted by
+    // damage share, so show what THIS player actually earned.
+    const mine = result.participants.find((p) => p.userId === state.profile?.id);
     node.innerHTML = `
       <h1>${win ? t('boss.defeated') : t('boss.failed')}</h1>
       <div class="card col">
-        <div>${t('boss.reward', { gold: result.rewardGold })}</div>
+        <div>${t('boss.reward', { gold: mine?.rewardGold ?? 0 })}</div>
         <div class="muted">${t('boss.damage')}</div>
         ${result.participants
           .sort((a, b) => b.damageDealt - a.damageDealt)
-          .map((p) => `<div class="participant"><span>${escapeHtml(p.nickname)}</span><b>${p.damageDealt}</b></div>`)
+          .map((p) => `<div class="participant"><span>${escapeHtml(p.nickname)}</span>`
+            + `<span class="participant-stats"><b>${p.damageDealt}</b>`
+            + `<span class="muted">${Icon('gold', 12)} ${p.rewardGold}</span></span></div>`)
           .join('')}
       </div>
       <button id="ok" class="accent">${t('boss.backToClan')}</button>`;
