@@ -16,6 +16,11 @@ import { authenticate } from './auth';
 import { store } from './store';
 import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { starsEnabled, createStarsInvoiceLink, answerPreCheckoutQuery, handleTelegramUpdate } from './payments';
+import { RateLimiter, rateLimit } from './ratelimit';
+
+// --- Anti-abuse rate limits (Этап 4.3), per client IP per 60s. Tunable via env. ---
+const RL_GLOBAL_MAX = Number(process.env.RL_GLOBAL_MAX ?? 240); // all /api combined
+const RL_AUTH_MAX = Number(process.env.RL_AUTH_MAX ?? 30); // auth + registration (account creation)
 
 /** Which battle core this server runs — lets the client pick the right HUD. */
 function battleMode() {
@@ -52,6 +57,18 @@ export function createApp() {
   app.use(compression());
   app.use(cors());
   app.use(express.json());
+
+  // --- Anti-abuse: rate limiting (Этап 4.3). A global per-IP ceiling on the whole
+  //     API, plus a stricter bucket on the account-creating auth routes. The
+  //     Telegram webhook is exempt — we must always ack Telegram, and it carries
+  //     its own secret-token guard (TELEGRAM_WEBHOOK_SECRET). ---
+  const globalLimiter = new RateLimiter({ windowMs: 60_000, max: RL_GLOBAL_MAX });
+  const authLimiter = new RateLimiter({ windowMs: 60_000, max: RL_AUTH_MAX });
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/telegram/webhook') { next(); return; }
+    rateLimit(globalLimiter)(req, res, next);
+  });
+  app.post(['/api/auth', '/api/register'], rateLimit(authLimiter));
 
   app.get('/api/health', (_req, res) =>
     res.json({ ok: true, persistence: store.persistent ? 'postgres' : 'memory' }));

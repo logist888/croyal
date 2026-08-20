@@ -3,6 +3,28 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-27 — Anti-abuse: rate limiting + nickname moderation (Этап 4.3)
+First live-ops hardening pass — make the public surface resistant to scripted
+abuse before a wider launch.
+- **API rate limiting** (`server/src/ratelimit.ts`): a pure `RateLimiter`
+  (fixed-window, O(1) per check, memory-bounded by a lazy sweep) plus a
+  `clientIp` helper (first hop of `X-Forwarded-For`, socket fallback) and an
+  Express `rateLimit` middleware (HTTP 429 + `Retry-After`). Wired in `http.ts`:
+  a global per-IP ceiling on all `/api` (`RL_GLOBAL_MAX`, default 240/min) plus a
+  stricter bucket on the account-creating `/api/auth` + `/api/register`
+  (`RL_AUTH_MAX`, default 30/min). The Telegram webhook is exempt (must always ack;
+  it has its own secret-token guard). Both limits are env-tunable.
+- **Nickname content moderation** (`shared/validation.ts`, so client and server
+  reject identically): `RESERVED_NICKNAMES` (whole-name, case-insensitive — blocks
+  impersonating admin/staff/system) and a small `NICKNAME_BLOCKLIST` of obvious
+  profanity (substring), layered into `validateNickname`. Both lists are launch
+  starter sets, documented as tunable.
+- Tests 246 → **257** (`ratelimit.test.ts`: allow-then-block, remaining countdown,
+  window reset, per-key isolation, memory sweep, XFF/socket IP parsing;
+  `validation.test.ts`: reserved-name + profanity rejection, legit names still pass).
+- **Deferred** (needs `BOT_TOKEN`): account-creation caps beyond per-IP throttling
+  rely on verified Telegram identity (one account per Telegram user already holds).
+
 ## build-26 — Fix: legacy accounts missing catalog cards
 Accounts created before the roster grew to 80 kept a smaller stored `cards`
 map, so their collection showed only the old subset and the trio picker
