@@ -3,6 +3,31 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-29 — Cosmetics: card frames & tower skins (Этап 3.4)
+The last Этап-3 gap — a fair, non-pay-to-win monetization surface. Cosmetics
+change only how your cards/towers LOOK, never a stat.
+- **Catalog** (`shared/cosmetics.ts`, data-only so client & server agree):
+  `COSMETICS` — 5 card frames + 5 tower skins, each with an accent color; one
+  free default per slot (auto-owned). `CosmeticsState` (owned/cardFrame/
+  towerSkin), `freshCosmetics`, `getCosmetic`, `equippedColor`.
+- **Store**: `cosmetics` on the player. `ensureCosmetics` initialises the free
+  defaults (owned + equipped) for legacy accounts and defensively re-grants the
+  frees; `buyCosmetic` (spends gems, guards own/afford/unknown), `equipCosmetic`
+  (must own; routes to the slot by item type). New accounts start with the
+  defaults. DB `users.cosmetics` JSONB + idempotent migration + hydrate.
+- **API**: `GET /api/cosmetics` (catalog + owned + equipped), `POST
+  /api/cosmetics/buy`, `POST /api/cosmetics/equip`; `/me` initialises the loadout.
+- **Client**: a "Style" section inside the 🛒 Shop screen — card frames and tower
+  skins with a color swatch and a buy/equip/equipped control (no new route, so
+  no back-stack risk). The hub diorama's deck is ringed in the equipped frame's
+  accent color. EN+RU i18n.
+- Tests 263 → **271** (`cosmetics.test.ts`: catalog invariants + defaults,
+  buy spends/owns/guards, equip ownership + correct slot, legacy-loadout init).
+  Verified end-to-end: register → GET returns defaults → buy(0 gems) 400 →
+  equip owned 200 → equip unowned 400. Client typecheck + build green.
+- **Deferred** (art/renderer polish): in-arena tower recoloring from the equipped
+  skin, applying the frame to the in-battle hand tiles, and emotes.
+
 ## build-28 — Analytics / telemetry (Этап 4.1)
 "Без цифр баланс и экономика вслепую." A lightweight, dependency-free
 in-memory telemetry sink so real player behavior is visible during the soft

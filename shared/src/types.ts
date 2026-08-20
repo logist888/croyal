@@ -5,6 +5,7 @@ import type { DailyState } from './daily';
 import type { SeasonState } from './seasons';
 import type { ClanWarState, WarReward } from './warfare';
 import type { BattlePassState } from './battlepass';
+import type { CosmeticsState } from './cosmetics';
 
 export type Language = 'en' | 'ru';
 
@@ -35,6 +36,7 @@ export interface PlayerProfile {
   season: SeasonState | null; // monthly ladder season + soft-reset (see seasons.ts); null until first read
   warReward: WarReward | null; // pending clan-war reward (see warfare.ts); null when none
   battlePass: BattlePassState | null; // seasonal battle pass (see battlepass.ts); null until first read
+  cosmetics: CosmeticsState | null; // owned/equipped cosmetics (see cosmetics.ts); null until first read
   clanId: string | null;
   createdAt: number;
 }

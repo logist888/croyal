@@ -10,10 +10,11 @@ import {
   CHEST_SLOTS, CHEST_DEFS, chestState, chestRemainingMs, gemsToSkip, hasUnlockingChest,
   hasDailyRewards, loginReward, questClaimable, DAILY_REWARDS,
   seasonRemainingMs, leagueName as seasonLeagueName, GOLD_PACKS, GEM_PACKS,
-  bpTierProgress, hasBattlePassRewards,
+  bpTierProgress, hasBattlePassRewards, equippedColor,
   type ChestSlot, type DailyState, type DailyQuest, type SeasonReward, type BattlePassReward,
+  type Cosmetic,
 } from '@croyal/shared';
-import { api, type ClanWarInfo, type BattlePassInfo } from './net';
+import { api, type ClanWarInfo, type BattlePassInfo, type CosmeticsInfo } from './net';
 import { state, setProfile, onProfile } from './state';
 import { haptic } from './telegram';
 import { t, setLang, getLang, cardName, rarityText, roleText, type Lang } from './i18n';
@@ -456,6 +457,9 @@ export function renderMenu(nav: Nav): void {
   for (const id of (cooldownMode ? p.trio : p.deck).slice(0, 3)) {
     trio.innerHTML += cardTileHtml({ cardId: id, size: 'sm', showCost: false, showName: false });
   }
+  // Equipped card-frame cosmetic: tint the diorama's deck with its accent color.
+  const frameHex = hex(equippedColor(p.cosmetics, 'cardFrame'));
+  trio.style.boxShadow = `0 0 0 2px ${frameHex}, 0 0 14px ${frameHex}55`;
 
   const tap = (sel: string, go: () => void) =>
     node.querySelector<HTMLElement>(sel)?.addEventListener('click', () => { haptic('light'); go(); });
@@ -910,6 +914,62 @@ function openTelegramInvoice(link: string): Promise<string> {
   });
 }
 
+/** One cosmetic row: swatch + name + a buy/equip/equipped control. */
+function cosmeticRowHtml(c: Cosmetic, info: CosmeticsInfo): string {
+  const name = getLang() === 'ru' ? c.ru : c.en;
+  const equippedId = c.type === 'cardFrame' ? info.cardFrame : info.towerSkin;
+  const isEquipped = equippedId === c.id;
+  const owned = info.owned.includes(c.id);
+  const swatch = `<span class="cos-swatch" style="background:${hex(c.color)};width:22px;height:22px;`
+    + 'border-radius:6px;display:inline-block;border:2px solid rgba(255,255,255,.55)"></span>';
+  const control = isEquipped
+    ? `<button class="ghost" disabled>${t('cos.equipped')}</button>`
+    : owned
+      ? `<button class="accent cos-equip" data-id="${c.id}">${t('cos.equip')}</button>`
+      : `<button class="accent cos-buy" data-id="${c.id}">${Icon('gem', 15)} ${c.gems}</button>`;
+  return `<div class="card shop-pack">
+      <div class="row space-between">
+        <div class="row" style="gap:10px;align-items:center">${swatch}<b>${escapeHtml(name)}</b></div>
+        ${control}
+      </div>
+    </div>`;
+}
+
+/** The "Style" (cosmetics) block inside the shop — buy/equip card frames & tower skins. */
+async function renderCosmeticsSection(host: HTMLElement): Promise<void> {
+  let info: CosmeticsInfo;
+  try { info = await api.cosmetics(); } catch { return; /* leave the section empty */ }
+  const build = () => {
+    const frames = info.catalog.filter((c) => c.type === 'cardFrame');
+    const towers = info.catalog.filter((c) => c.type === 'towerSkin');
+    return `<h2>${t('cos.title')}</h2>`
+      + `<div class="muted" style="margin-bottom:6px">${t('cos.hint')}</div>`
+      + `<h3 style="margin:8px 0 4px">${t('cos.frames')}</h3>`
+      + frames.map((c) => cosmeticRowHtml(c, info)).join('')
+      + `<h3 style="margin:8px 0 4px">${t('cos.towers')}</h3>`
+      + towers.map((c) => cosmeticRowHtml(c, info)).join('');
+  };
+  const rerender = () => { host.innerHTML = build(); wire(); };
+  const act = async (btn: HTMLButtonElement, fn: (id: string) => Promise<{ profile: typeof state.profile }>) => {
+    btn.disabled = true;
+    try {
+      setProfile((await fn(btn.dataset.id!)).profile!);
+      info = await api.cosmetics();
+      haptic('success');
+      rerender();
+    } catch (e) {
+      haptic('error');
+      toast((e as Error).message, 'error');
+      btn.disabled = false;
+    }
+  };
+  function wire(): void {
+    host.querySelectorAll<HTMLButtonElement>('.cos-buy').forEach((b) => { b.onclick = () => act(b, api.buyCosmetic); });
+    host.querySelectorAll<HTMLButtonElement>('.cos-equip').forEach((b) => { b.onclick = () => act(b, api.equipCosmetic); });
+  }
+  rerender();
+}
+
 export async function renderShop(nav: Nav): Promise<void> {
   setGameVisible(false);
   const p = state.profile!;
@@ -935,8 +995,10 @@ export async function renderShop(nav: Nav): Promise<void> {
     <div id="gem-section"></div>
     <h2>${t('shop.gold')}</h2>
     <div class="muted" style="margin-bottom:6px">${t('shop.goldHint')}</div>
-    ${goldPacks}`;
+    ${goldPacks}
+    <div id="cos-section"></div>`;
   setUI(node, { screen: 'shop' });
+  void renderCosmeticsSection(node.querySelector<HTMLDivElement>('#cos-section')!);
   node.querySelectorAll<HTMLButtonElement>('.shop-buy-gold').forEach((btn) => {
     btn.onclick = async () => {
       const packId = btn.getAttribute('data-pack')!;

@@ -9,7 +9,7 @@ import compression from 'compression';
 import cors from 'cors';
 import {
   validateNickname, validateClanName, warWeekRemainingMs, clanWarTier,
-  BP_TRACK, BP_TIERS, BP_XP_PER_TIER, BP_PREMIUM_COST_GEMS, bpTier,
+  BP_TRACK, BP_TIERS, BP_XP_PER_TIER, BP_PREMIUM_COST_GEMS, bpTier, COSMETICS,
   type Language, type PlayerProfile,
 } from '@croyal/shared';
 import { authenticate } from './auth';
@@ -143,6 +143,7 @@ export function createApp() {
     store.ensureDaily(req.userId!); // roll a new day's quests/streak on login
     store.ensureSeason(req.userId!); // roll over the season / bank an end-of-season reward
     store.ensureBattlePass(req.userId!); // roll the battle pass to the current season
+    store.ensureCosmetics(req.userId!); // init the cosmetics loadout (legacy accounts)
     const me = store.getUser(req.userId!);
     if (me?.clanId) store.ensureClanWar(me.clanId); // roll over the war / bank a war reward
     const user = store.getUser(req.userId!);
@@ -183,6 +184,33 @@ export function createApp() {
   app.post('/api/shop/gold', requireAuth, (req: AuthedRequest, res: Response) => {
     try {
       const profile = store.buyGoldPack(req.userId!, req.body?.packId);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Cosmetics (Этап 3.4): buy/equip vanity card frames & tower skins ---
+  app.get('/api/cosmetics', requireAuth, (req: AuthedRequest, res: Response) => {
+    const c = store.ensureCosmetics(req.userId!);
+    res.json({
+      catalog: COSMETICS,
+      owned: c?.owned ?? [],
+      cardFrame: c?.cardFrame ?? null,
+      towerSkin: c?.towerSkin ?? null,
+    });
+  });
+  app.post('/api/cosmetics/buy', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.buyCosmetic(req.userId!, req.body?.id);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+  app.post('/api/cosmetics/equip', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.equipCosmetic(req.userId!, req.body?.id);
       res.json({ profile: publicProfile(profile) });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
