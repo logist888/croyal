@@ -11,6 +11,7 @@ import {
 import { Simulation } from './simulation';
 import { ACTIVE_BATTLE_CONFIG } from './active-config';
 import { pickBotAction, botNextDelay } from './bot';
+import { analytics } from '../analytics';
 import type { MatchRecording, ReplayAction } from './replay';
 import type { Store } from '../store';
 
@@ -206,7 +207,23 @@ export class Match {
     const winner = this.sim.winnerSide!;
     const reason = this.sim.endReason!;
     this.applyResults(winner, reason);
+    this.recordAnalytics(winner);
     this.onEnd(this);
+  }
+
+  /** Feed the telemetry sink one match-end event (funnel/duration/card win rates). */
+  private recordAnalytics(winner: Side): void {
+    const winnerSeat = winner === 'A' ? this.seatA : this.seatB;
+    const loserSeat = winner === 'A' ? this.seatB : this.seatA;
+    const humanUserIds = [this.seatA.userId, this.seatB.userId].filter((id): id is string => !!id);
+    analytics.recordMatchEnd({
+      durationSec: this.sim.tick * TICK_DT,
+      ranked: !this.friendly,
+      vsBot: this.seatA.userId === null || this.seatB.userId === null,
+      humanUserIds,
+      winnerCards: [...winnerSeat.deck],
+      loserCards: [...loserSeat.deck],
+    });
   }
 
   private applyResults(winner: Side, reason: MatchResult['reason']): void {

@@ -3,6 +3,77 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-29 — Cosmetics: card frames & tower skins (Этап 3.4)
+The last Этап-3 gap — a fair, non-pay-to-win monetization surface. Cosmetics
+change only how your cards/towers LOOK, never a stat.
+- **Catalog** (`shared/cosmetics.ts`, data-only so client & server agree):
+  `COSMETICS` — 5 card frames + 5 tower skins, each with an accent color; one
+  free default per slot (auto-owned). `CosmeticsState` (owned/cardFrame/
+  towerSkin), `freshCosmetics`, `getCosmetic`, `equippedColor`.
+- **Store**: `cosmetics` on the player. `ensureCosmetics` initialises the free
+  defaults (owned + equipped) for legacy accounts and defensively re-grants the
+  frees; `buyCosmetic` (spends gems, guards own/afford/unknown), `equipCosmetic`
+  (must own; routes to the slot by item type). New accounts start with the
+  defaults. DB `users.cosmetics` JSONB + idempotent migration + hydrate.
+- **API**: `GET /api/cosmetics` (catalog + owned + equipped), `POST
+  /api/cosmetics/buy`, `POST /api/cosmetics/equip`; `/me` initialises the loadout.
+- **Client**: a "Style" section inside the 🛒 Shop screen — card frames and tower
+  skins with a color swatch and a buy/equip/equipped control (no new route, so
+  no back-stack risk). The hub diorama's deck is ringed in the equipped frame's
+  accent color. EN+RU i18n.
+- Tests 263 → **271** (`cosmetics.test.ts`: catalog invariants + defaults,
+  buy spends/owns/guards, equip ownership + correct slot, legacy-loadout init).
+  Verified end-to-end: register → GET returns defaults → buy(0 gems) 400 →
+  equip owned 200 → equip unowned 400. Client typecheck + build green.
+- **Deferred** (art/renderer polish): in-arena tower recoloring from the equipped
+  skin, applying the frame to the in-battle hand tiles, and emotes.
+
+## build-28 — Analytics / telemetry (Этап 4.1)
+"Без цифр баланс и экономика вслепую." A lightweight, dependency-free
+in-memory telemetry sink so real player behavior is visible during the soft
+launch (resets on restart; a durable sink is the scale-up path).
+- **Aggregator** (`server/src/analytics.ts`): a pure, time-injectable `Analytics`
+  class + a process-wide `analytics` singleton (mirrors `store`). Tracks a
+  **funnel** (registrations → reached matchmaking → completed a match, with
+  unique-user rates), **D1/D7 retention** cohorts (one small record per user;
+  only elapsed cohorts count toward a rate), a **battle-length** distribution
+  (avg/min/max + a bucketed histogram), and **per-card win rates** (ranked
+  matches only). Never throws — telemetry must not break a request or a match.
+- **Hooks**: `recordRegister` (POST /api/register), `recordActivity` (returning
+  login on /api/auth), `recordQueue` (`manager.queue`), and `recordMatchEnd`
+  (`Match.endMatch` — duration from the sim tick, both sides' cards, ranked flag,
+  vs-bot flag). Friendly/practice matches are counted but excluded from card
+  win rates.
+- **Endpoint**: `GET /api/admin/metrics` returns the JSON report. Disabled unless
+  `ADMIN_TOKEN` is set; then it requires that token (`x-admin-token` header or
+  `?token=`). Documented in `.env.example`.
+- Tests 257 → **263** (`analytics.test.ts`: funnel counts + unique-user rates,
+  duration avg/histogram, card win rates with friendly excluded, D1/D7 retention
+  incl. not-yet-elapsed cohorts). Verified end-to-end: booted the server, hit the
+  gated endpoint (401/401/200), and confirmed a real register bumps the funnel.
+
+## build-27 — Anti-abuse: rate limiting + nickname moderation (Этап 4.3)
+First live-ops hardening pass — make the public surface resistant to scripted
+abuse before a wider launch.
+- **API rate limiting** (`server/src/ratelimit.ts`): a pure `RateLimiter`
+  (fixed-window, O(1) per check, memory-bounded by a lazy sweep) plus a
+  `clientIp` helper (first hop of `X-Forwarded-For`, socket fallback) and an
+  Express `rateLimit` middleware (HTTP 429 + `Retry-After`). Wired in `http.ts`:
+  a global per-IP ceiling on all `/api` (`RL_GLOBAL_MAX`, default 240/min) plus a
+  stricter bucket on the account-creating `/api/auth` + `/api/register`
+  (`RL_AUTH_MAX`, default 30/min). The Telegram webhook is exempt (must always ack;
+  it has its own secret-token guard). Both limits are env-tunable.
+- **Nickname content moderation** (`shared/validation.ts`, so client and server
+  reject identically): `RESERVED_NICKNAMES` (whole-name, case-insensitive — blocks
+  impersonating admin/staff/system) and a small `NICKNAME_BLOCKLIST` of obvious
+  profanity (substring), layered into `validateNickname`. Both lists are launch
+  starter sets, documented as tunable.
+- Tests 246 → **257** (`ratelimit.test.ts`: allow-then-block, remaining countdown,
+  window reset, per-key isolation, memory sweep, XFF/socket IP parsing;
+  `validation.test.ts`: reserved-name + profanity rejection, legit names still pass).
+- **Deferred** (needs `BOT_TOKEN`): account-creation caps beyond per-IP throttling
+  rely on verified Telegram identity (one account per Telegram user already holds).
+
 ## build-26 — Fix: legacy accounts missing catalog cards
 Accounts created before the roster grew to 80 kept a smaller stored `cards`
 map, so their collection showed only the old subset and the trio picker

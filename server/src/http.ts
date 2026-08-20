@@ -9,13 +9,22 @@ import compression from 'compression';
 import cors from 'cors';
 import {
   validateNickname, validateClanName, warWeekRemainingMs, clanWarTier,
-  BP_TRACK, BP_TIERS, BP_XP_PER_TIER, BP_PREMIUM_COST_GEMS, bpTier,
+  BP_TRACK, BP_TIERS, BP_XP_PER_TIER, BP_PREMIUM_COST_GEMS, bpTier, COSMETICS,
   type Language, type PlayerProfile,
 } from '@croyal/shared';
 import { authenticate } from './auth';
 import { store } from './store';
 import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { starsEnabled, createStarsInvoiceLink, answerPreCheckoutQuery, handleTelegramUpdate } from './payments';
+import { RateLimiter, rateLimit } from './ratelimit';
+import { analytics } from './analytics';
+
+// --- Anti-abuse rate limits (Этап 4.3), per client IP per 60s. Tunable via env. ---
+const RL_GLOBAL_MAX = Number(process.env.RL_GLOBAL_MAX ?? 240); // all /api combined
+const RL_AUTH_MAX = Number(process.env.RL_AUTH_MAX ?? 30); // auth + registration (account creation)
+
+// --- Telemetry admin endpoint (Этап 4.1): only enabled when ADMIN_TOKEN is set. ---
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
 
 /** Which battle core this server runs — lets the client pick the right HUD. */
 function battleMode() {
@@ -53,8 +62,37 @@ export function createApp() {
   app.use(cors());
   app.use(express.json());
 
+  // --- Anti-abuse: rate limiting (Этап 4.3). A global per-IP ceiling on the whole
+  //     API, plus a stricter bucket on the account-creating auth routes. The
+  //     Telegram webhook is exempt — we must always ack Telegram, and it carries
+  //     its own secret-token guard (TELEGRAM_WEBHOOK_SECRET). ---
+  const globalLimiter = new RateLimiter({ windowMs: 60_000, max: RL_GLOBAL_MAX });
+  const authLimiter = new RateLimiter({ windowMs: 60_000, max: RL_AUTH_MAX });
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/telegram/webhook') { next(); return; }
+    rateLimit(globalLimiter)(req, res, next);
+  });
+  app.post(['/api/auth', '/api/register'], rateLimit(authLimiter));
+
   app.get('/api/health', (_req, res) =>
     res.json({ ok: true, persistence: store.persistent ? 'postgres' : 'memory' }));
+
+  // --- Telemetry (Этап 4.1): live funnel / retention / battle-length / card win
+  //     rates. Disabled unless ADMIN_TOKEN is set; then require it (header
+  //     x-admin-token or ?token=). In-memory — resets on restart. ---
+  app.get('/api/admin/metrics', (req: Request, res: Response) => {
+    if (!ADMIN_TOKEN) {
+      res.status(404).json({ error: 'not found' });
+      return;
+    }
+    const provided = req.header('x-admin-token')
+      ?? (typeof req.query.token === 'string' ? req.query.token : '');
+    if (provided !== ADMIN_TOKEN) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+    res.json(analytics.report());
+  });
 
   // --- Auth: identify the Telegram user; tell the client whether to register ---
   app.post('/api/auth', (req: Request, res: Response) => {
@@ -68,6 +106,7 @@ export function createApp() {
     if (existing) {
       store.ensureDaily(existing.id); // roll a new day's quests/streak on login
       store.ensureSeason(existing.id); // roll over the season / bank an end-of-season reward
+      analytics.recordActivity(existing.id); // telemetry: returning-player session (retention)
       const token = store.createSession(existing.id);
       res.json({ registered: true, token, profile: publicProfile(existing), mode: battleMode() });
       return;
@@ -91,6 +130,7 @@ export function createApp() {
     const lang: Language = language === 'ru' ? 'ru' : 'en';
     try {
       const profile = store.createUser({ telegramId: auth.user.id, nickname, language: lang });
+      analytics.recordRegister(profile.id); // telemetry: new account (funnel top)
       const token = store.createSession(profile.id);
       res.json({ token, profile: publicProfile(profile), mode: battleMode() });
     } catch (err) {
@@ -103,6 +143,7 @@ export function createApp() {
     store.ensureDaily(req.userId!); // roll a new day's quests/streak on login
     store.ensureSeason(req.userId!); // roll over the season / bank an end-of-season reward
     store.ensureBattlePass(req.userId!); // roll the battle pass to the current season
+    store.ensureCosmetics(req.userId!); // init the cosmetics loadout (legacy accounts)
     const me = store.getUser(req.userId!);
     if (me?.clanId) store.ensureClanWar(me.clanId); // roll over the war / bank a war reward
     const user = store.getUser(req.userId!);
@@ -143,6 +184,33 @@ export function createApp() {
   app.post('/api/shop/gold', requireAuth, (req: AuthedRequest, res: Response) => {
     try {
       const profile = store.buyGoldPack(req.userId!, req.body?.packId);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // --- Cosmetics (Этап 3.4): buy/equip vanity card frames & tower skins ---
+  app.get('/api/cosmetics', requireAuth, (req: AuthedRequest, res: Response) => {
+    const c = store.ensureCosmetics(req.userId!);
+    res.json({
+      catalog: COSMETICS,
+      owned: c?.owned ?? [],
+      cardFrame: c?.cardFrame ?? null,
+      towerSkin: c?.towerSkin ?? null,
+    });
+  });
+  app.post('/api/cosmetics/buy', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.buyCosmetic(req.userId!, req.body?.id);
+      res.json({ profile: publicProfile(profile) });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+  app.post('/api/cosmetics/equip', requireAuth, (req: AuthedRequest, res: Response) => {
+    try {
+      const profile = store.equipCosmetic(req.userId!, req.body?.id);
       res.json({ profile: publicProfile(profile) });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });

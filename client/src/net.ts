@@ -5,8 +5,15 @@ import {
   encode, decodeServer, type ClientMessage, type ServerMessage,
   type PlayerProfile, type Clan, type BattleModeInfo,
   type LeaderboardPlayer, type LeaderboardClan, type WarClanEntry, type WarReward,
-  type BattlePassState, type BattlePassTier,
+  type BattlePassState, type BattlePassTier, type Cosmetic,
 } from '@croyal/shared';
+
+export interface CosmeticsInfo {
+  catalog: Cosmetic[];
+  owned: string[];
+  cardFrame: string | null;
+  towerSkin: string | null;
+}
 
 export interface BattlePassInfo {
   state: BattlePassState | null;
@@ -96,6 +103,11 @@ export const api = {
   buyBattlePassPremium: () => req<{ profile: PlayerProfile }>('/api/battlepass/premium', { method: 'POST' }),
   claimBattlePass: () => req<{ profile: PlayerProfile; gold: number; gems: number }>('/api/battlepass/claim', { method: 'POST' }),
   shopConfig: () => req<{ starsEnabled: boolean }>('/api/shop/config'),
+  cosmetics: () => req<CosmeticsInfo>('/api/cosmetics'),
+  buyCosmetic: (id: string) =>
+    req<{ profile: PlayerProfile }>('/api/cosmetics/buy', { method: 'POST', body: JSON.stringify({ id }) }),
+  equipCosmetic: (id: string) =>
+    req<{ profile: PlayerProfile }>('/api/cosmetics/equip', { method: 'POST', body: JSON.stringify({ id }) }),
   starsInvoice: (packId: string) =>
     req<{ link: string }>('/api/shop/stars/invoice', { method: 'POST', body: JSON.stringify({ packId }) }),
   listClans: () => req<{ clans: { id: string; name: string; memberCount: number }[] }>('/api/clans'),

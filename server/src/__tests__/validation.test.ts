@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateNickname, validateClanName, MAX_CLAN_MEMBERS } from '@croyal/shared';
+import { validateNickname, validateClanName, nicknameContentError, MAX_CLAN_MEMBERS } from '@croyal/shared';
 
 describe('nickname rules (English-only, no emoji)', () => {
   it('accepts valid English nicknames', () => {
@@ -19,6 +19,28 @@ describe('nickname rules (English-only, no emoji)', () => {
   it('rejects spaces and punctuation', () => {
     expect(validateNickname('john doe').ok).toBe(false);
     expect(validateNickname('john!').ok).toBe(false);
+  });
+});
+
+describe('nickname content moderation (Этап 4.3 anti-abuse)', () => {
+  it('rejects reserved names (case-insensitive, whole name)', () => {
+    expect(validateNickname('admin').ok).toBe(false);
+    expect(validateNickname('Admin').ok).toBe(false);
+    expect(validateNickname('SUPPORT').ok).toBe(false);
+    // A reserved word as a substring of a longer legit name is fine.
+    expect(validateNickname('adminionN').ok).toBe(true);
+    expect(nicknameContentError('modern')).toBeNull();
+  });
+
+  it('rejects obvious profanity anywhere in the name', () => {
+    expect(validateNickname('xXfuckXx').ok).toBe(false);
+    expect(validateNickname('a_shit_b').ok).toBe(false);
+    expect(nicknameContentError('cleanName')).toBeNull();
+  });
+
+  it('still accepts ordinary nicknames', () => {
+    expect(validateNickname('Knight_99').ok).toBe(true);
+    expect(validateNickname('DragonKing').ok).toBe(true);
   });
 });
 

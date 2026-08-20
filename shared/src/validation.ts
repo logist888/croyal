@@ -16,6 +16,41 @@ export interface ValidationResult {
   error?: string;
 }
 
+/**
+ * Reserved nicknames (matched on the WHOLE name, case-insensitively) — block
+ * impersonation of staff / the system. A launch starter set; extend freely.
+ */
+export const RESERVED_NICKNAMES = new Set<string>([
+  'admin', 'administrator', 'root', 'system', 'systembot', 'moderator',
+  'support', 'staff', 'official', 'server', 'bot', 'null', 'undefined',
+  'supercell', 'towerclash',
+]);
+
+/**
+ * Offensive substrings rejected ANYWHERE in a nickname (case-insensitive).
+ * A deliberately small, unambiguous starter list — tune it for your audience.
+ * Kept as substrings so obvious variants ("xXfuckXx") are caught too.
+ */
+export const NICKNAME_BLOCKLIST = [
+  'fuck', 'shit', 'bitch', 'cunt', 'nigger', 'nigga', 'faggot',
+  'retard', 'whore', 'slut', 'asshole', 'rape', 'nazi',
+];
+
+/**
+ * Content moderation layered on top of the character/length rules: reject
+ * reserved names and obvious profanity. Returns an error string or null.
+ */
+export function nicknameContentError(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (RESERVED_NICKNAMES.has(lower)) {
+    return 'This nickname is reserved. Please choose another.';
+  }
+  for (const bad of NICKNAME_BLOCKLIST) {
+    if (lower.includes(bad)) return 'This nickname contains inappropriate language.';
+  }
+  return null;
+}
+
 export function validateNickname(raw: string): ValidationResult {
   const name = (raw ?? '').trim();
   if (name.length < NICKNAME_MIN || name.length > NICKNAME_MAX) {
@@ -27,6 +62,8 @@ export function validateNickname(raw: string): ValidationResult {
       error: 'Nickname may contain only English letters (a-z, A-Z), digits and "_". No emoji or other languages.',
     };
   }
+  const content = nicknameContentError(name);
+  if (content) return { ok: false, error: content };
   return { ok: true };
 }
 

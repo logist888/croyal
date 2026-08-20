@@ -15,10 +15,11 @@ import {
   seasonIndex, softResetTrophies, seasonRewardFor,
   warWeekIndex, freshWar, memberWarReward, goldPack,
   freshBattlePass, bpTier, BP_TRACK, BP_TIERS, BP_PREMIUM_COST_GEMS,
+  freshCosmetics, getCosmetic, DEFAULT_COSMETICS,
   type PlayerProfile, type Clan, type ClanMember, type Language, type CardState,
   type ChestRarity, type BattleRewards, type DailyState, type QuestType,
   type LeaderboardPlayer, type LeaderboardClan, type SeasonState,
-  type ClanWarState, type WarClanEntry, type BattlePassState,
+  type ClanWarState, type WarClanEntry, type BattlePassState, type CosmeticsState,
 } from '@croyal/shared';
 import { Db } from './db';
 
@@ -109,6 +110,7 @@ export class Store {
       season: null,
       warReward: null,
       battlePass: null,
+      cosmetics: freshCosmetics(),
       clanId: null,
       createdAt: Date.now(),
     };
@@ -532,6 +534,58 @@ export class Store {
     const user = this.users.get(userId);
     if (!user || gems <= 0) return user;
     user.gems += gems;
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  // --- Cosmetics (see shared/cosmetics.ts) ---
+
+  /**
+   * Ensure a user has a cosmetics loadout: the free defaults, owned and
+   * equipped. Initialises it for legacy accounts (stored null) and defensively
+   * re-grants the free defaults if they ever went missing. Idempotent.
+   */
+  ensureCosmetics(userId: string): CosmeticsState | null {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    if (!user.cosmetics) {
+      user.cosmetics = freshCosmetics();
+      this.db?.upsertUser(user);
+      return user.cosmetics;
+    }
+    let changed = false;
+    for (const id of DEFAULT_COSMETICS) {
+      if (!user.cosmetics.owned.includes(id)) { user.cosmetics.owned.push(id); changed = true; }
+    }
+    if (changed) this.db?.upsertUser(user);
+    return user.cosmetics;
+  }
+
+  /** Buy a cosmetic with gems (vanity only — never a stat). */
+  buyCosmetic(userId: string, id: string): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const cosmetic = getCosmetic(id);
+    if (!cosmetic) throw new Error('Unknown cosmetic');
+    const c = this.ensureCosmetics(userId)!;
+    if (c.owned.includes(id)) throw new Error('Already owned');
+    if (user.gems < cosmetic.gems) throw new Error('Not enough gems');
+    user.gems -= cosmetic.gems;
+    c.owned.push(id);
+    this.db?.upsertUser(user);
+    return user;
+  }
+
+  /** Equip an owned cosmetic into its slot (chosen by the item's type). */
+  equipCosmetic(userId: string, id: string): PlayerProfile {
+    const user = this.users.get(userId);
+    if (!user) throw new Error('User not found');
+    const cosmetic = getCosmetic(id);
+    if (!cosmetic) throw new Error('Unknown cosmetic');
+    const c = this.ensureCosmetics(userId)!;
+    if (!c.owned.includes(id)) throw new Error('Cosmetic not owned');
+    if (cosmetic.type === 'cardFrame') c.cardFrame = id;
+    else c.towerSkin = id;
     this.db?.upsertUser(user);
     return user;
   }
