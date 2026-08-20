@@ -17,10 +17,14 @@ import { store } from './store';
 import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { starsEnabled, createStarsInvoiceLink, answerPreCheckoutQuery, handleTelegramUpdate } from './payments';
 import { RateLimiter, rateLimit } from './ratelimit';
+import { analytics } from './analytics';
 
 // --- Anti-abuse rate limits (Этап 4.3), per client IP per 60s. Tunable via env. ---
 const RL_GLOBAL_MAX = Number(process.env.RL_GLOBAL_MAX ?? 240); // all /api combined
 const RL_AUTH_MAX = Number(process.env.RL_AUTH_MAX ?? 30); // auth + registration (account creation)
+
+// --- Telemetry admin endpoint (Этап 4.1): only enabled when ADMIN_TOKEN is set. ---
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
 
 /** Which battle core this server runs — lets the client pick the right HUD. */
 function battleMode() {
@@ -73,6 +77,23 @@ export function createApp() {
   app.get('/api/health', (_req, res) =>
     res.json({ ok: true, persistence: store.persistent ? 'postgres' : 'memory' }));
 
+  // --- Telemetry (Этап 4.1): live funnel / retention / battle-length / card win
+  //     rates. Disabled unless ADMIN_TOKEN is set; then require it (header
+  //     x-admin-token or ?token=). In-memory — resets on restart. ---
+  app.get('/api/admin/metrics', (req: Request, res: Response) => {
+    if (!ADMIN_TOKEN) {
+      res.status(404).json({ error: 'not found' });
+      return;
+    }
+    const provided = req.header('x-admin-token')
+      ?? (typeof req.query.token === 'string' ? req.query.token : '');
+    if (provided !== ADMIN_TOKEN) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+    res.json(analytics.report());
+  });
+
   // --- Auth: identify the Telegram user; tell the client whether to register ---
   app.post('/api/auth', (req: Request, res: Response) => {
     const { initData, devUser } = req.body ?? {};
@@ -85,6 +106,7 @@ export function createApp() {
     if (existing) {
       store.ensureDaily(existing.id); // roll a new day's quests/streak on login
       store.ensureSeason(existing.id); // roll over the season / bank an end-of-season reward
+      analytics.recordActivity(existing.id); // telemetry: returning-player session (retention)
       const token = store.createSession(existing.id);
       res.json({ registered: true, token, profile: publicProfile(existing), mode: battleMode() });
       return;
@@ -108,6 +130,7 @@ export function createApp() {
     const lang: Language = language === 'ru' ? 'ru' : 'en';
     try {
       const profile = store.createUser({ telegramId: auth.user.id, nickname, language: lang });
+      analytics.recordRegister(profile.id); // telemetry: new account (funnel top)
       const token = store.createSession(profile.id);
       res.json({ token, profile: publicProfile(profile), mode: battleMode() });
     } catch (err) {

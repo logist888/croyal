@@ -3,6 +3,30 @@
 Per-build log. Each coding run is preceded by a backup (see [BACKUP.md](BACKUP.md))
 and summarized here so backups are traceable.
 
+## build-28 — Analytics / telemetry (Этап 4.1)
+"Без цифр баланс и экономика вслепую." A lightweight, dependency-free
+in-memory telemetry sink so real player behavior is visible during the soft
+launch (resets on restart; a durable sink is the scale-up path).
+- **Aggregator** (`server/src/analytics.ts`): a pure, time-injectable `Analytics`
+  class + a process-wide `analytics` singleton (mirrors `store`). Tracks a
+  **funnel** (registrations → reached matchmaking → completed a match, with
+  unique-user rates), **D1/D7 retention** cohorts (one small record per user;
+  only elapsed cohorts count toward a rate), a **battle-length** distribution
+  (avg/min/max + a bucketed histogram), and **per-card win rates** (ranked
+  matches only). Never throws — telemetry must not break a request or a match.
+- **Hooks**: `recordRegister` (POST /api/register), `recordActivity` (returning
+  login on /api/auth), `recordQueue` (`manager.queue`), and `recordMatchEnd`
+  (`Match.endMatch` — duration from the sim tick, both sides' cards, ranked flag,
+  vs-bot flag). Friendly/practice matches are counted but excluded from card
+  win rates.
+- **Endpoint**: `GET /api/admin/metrics` returns the JSON report. Disabled unless
+  `ADMIN_TOKEN` is set; then it requires that token (`x-admin-token` header or
+  `?token=`). Documented in `.env.example`.
+- Tests 257 → **263** (`analytics.test.ts`: funnel counts + unique-user rates,
+  duration avg/histogram, card win rates with friendly excluded, D1/D7 retention
+  incl. not-yet-elapsed cohorts). Verified end-to-end: booted the server, hit the
+  gated endpoint (401/401/200), and confirmed a real register bumps the funnel.
+
 ## build-27 — Anti-abuse: rate limiting + nickname moderation (Этап 4.3)
 First live-ops hardening pass — make the public surface resistant to scripted
 abuse before a wider launch.

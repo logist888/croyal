@@ -19,6 +19,7 @@ import {
 } from './game/tournament';
 import { ACTIVE_BATTLE_CONFIG } from './game/active-config';
 import { store } from './store';
+import { analytics } from './analytics';
 
 interface TournamentRun {
   userId: string;
@@ -87,6 +88,7 @@ export class GameManager {
     if (this.waitingQueue.some((w) => w.userId === userId)) return; // already waiting
     const profile = store.getUser(userId);
     if (!profile) return;
+    analytics.recordQueue(userId); // telemetry: reached matchmaking (funnel)
 
     // Pair with whichever waiting player has the smallest trophy gap that
     // THEY are currently willing to accept — their tolerance widened by how
